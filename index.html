@@ -670,7 +670,11 @@ function populateChips(containerId, items) {
     chip.className = 'chip';
     chip.dataset.value = item;
     chip.textContent = item;
-    chip.addEventListener('click', () => chip.classList.toggle('selected'));
+    chip.addEventListener('click', () => {
+      const wasSelected = chip.classList.contains('selected');
+      container.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      if (!wasSelected) chip.classList.add('selected');
+    });
     container.appendChild(chip);
   });
 }
