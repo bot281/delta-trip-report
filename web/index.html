@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Delta - Báo Cáo Hành Trình</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --primary: #1a56db;
+      --primary-light: #e8effd;
+      --success: #059669;
+      --success-light: #d1fae5;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --warning-light: #fef3c7;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-500: #6b7280;
+      --gray-700: #374151;
+      --gray-900: #111827;
+      --radius: 12px;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--gray-100);
+      color: var(--gray-900);
+      min-height: 100vh;
+      padding-bottom: 100px;
+    }
+    
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .header .subtitle { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+    
+    .container { max-width: 480px; margin: 0 auto; padding: 16px; }
+    
+    .card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--gray-700);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .card-title .icon { font-size: 18px; }
+    
+    .saved-badge {
+      font-size: 11px;
+      background: var(--success-light);
+      color: var(--success);
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+    
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-700);
+      margin-bottom: 6px;
+    }
+    
+    .field label .required { color: var(--danger); }
+    
+    select, input[type="text"], input[type="number"], input[type="time"], input[type="date"], textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 16px;
+      background: white;
+      color: var(--gray-900);
+      -webkit-appearance: none;
+      appearance: none;
+      transition: border-color 0.2s;
+    }
+    
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+    
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(26,86,219,0.1);
+    }
+    
+    textarea { resize: vertical; min-height: 60px; }
+    
+    .row { display: flex; gap: 12px; }
+    .row > .field { flex: 1; }
+    
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    
+    .chip {
+      padding: 8px 16px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+      background: white;
+    }
+    
+    .chip.selected {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+      font-weight: 500;
+    }
+    
+    .chip:active { transform: scale(0.95); }
+    
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-outline { background: white; color: var(--primary); border: 1.5px solid var(--primary); }
+    .btn-warning { background: var(--warning); color: white; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn + .btn { margin-top: 12px; }
+    
+    /* Tab bar */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--gray-200);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--gray-500);
+    }
+    
+    .tab.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    /* Sub tabs (inside pending) */
+    .sub-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--gray-100);
+      border-radius: 8px;
+      padding: 3px;
+    }
+    
+    .sub-tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--gray-500);
+    }
+    
+    .sub-tab.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    
+    /* Pending trip card */
+    .pending-trip {
+      background: #fffbeb;
+      border: 1.5px solid #fbbf24;
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .pending-trip:active { transform: scale(0.98); }
+    
+    .pending-trip .trip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .pending-trip .trip-location { font-weight: 600; font-size: 15px; }
+    .pending-trip .trip-time { font-size: 13px; color: var(--gray-500); }
+    .pending-trip .trip-details { font-size: 13px; color: var(--gray-500); }
+    .pending-trip .trip-code {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-top: 6px;
+      font-family: monospace;
+      letter-spacing: 2px;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--gray-500);
+    }
+    
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    
+    /* Trip code display */
+    .trip-code-display {
+      text-align: center;
+      padding: 32px 20px;
+    }
+    
+    .trip-code-display .code {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 12px;
+      color: var(--primary);
+      font-family: monospace;
+      margin: 16px 0;
+    }
+    
+    .trip-code-display .label {
+      font-size: 14px;
+      color: var(--gray-500);
+      margin-bottom: 8px;
+    }
+    
+    .trip-code-display .hint {
+      font-size: 13px;
+      color: var(--gray-500);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+    
+    .btn-copy {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 24px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1.5px solid var(--primary);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-copy:active { transform: scale(0.95); }
+    .btn-copy.copied { background: var(--success-light); color: var(--success); border-color: var(--success); }
+    
+    /* Code input */
+    .code-input-wrap {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .code-input {
+      flex: 1;
+      font-size: 24px !important;
+      font-weight: 700;
+      letter-spacing: 8px;
+      text-align: center;
+      text-transform: uppercase;
+      font-family: monospace;
+      padding: 14px !important;
+    }
+    
+    .code-input::placeholder {
+      letter-spacing: 2px;
+      font-size: 16px;
+      font-weight: 400;
+    }
+    
+    .btn-search {
+      padding: 14px 20px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--gray-900);
+      color: white;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+    }
+    
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div class="header">
+  <h1>🚛 Báo Cáo Hành Trình</h1>
+  <div class="subtitle" id="driverInfo">Delta International</div>
+</div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<div class="container">
+  
+  <!-- Main tab bar -->
+  <div class="tabs">
+    <div class="tab active" data-tab="arrive" onclick="switchTab('arrive')">📍 Đến nơi</div>
+    <div class="tab" data-tab="pending" onclick="switchTab('pending')">⏳ Chờ rời đi</div>
+  </div>
+  
+  <!-- ===== ARRIVE TAB ===== -->
+  <div id="tab-arrive">
+    
+    <!-- Driver Profile -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">👤</span> Thông tin lái xe
+        <span class="saved-badge" id="profileBadge">✓ Đã lưu</span>
+      </div>
+      
+      <div class="field">
+        <label>Tên lái xe <span class="required">*</span></label>
+        <select id="driver"><option value="">Đang tải...</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Mã số xe / Biển số xe <span class="required">*</span></label>
+        <select id="vehicle"><option value="">Đang tải...</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Biển số romooc <span class="required">*</span></label>
+        <select id="trailer"><option value="">Đang tải...</option></select>
+      </div>
+    </div>
+    
+    <!-- Trip details -->
+    <div class="card">
+      <div class="card-title"><span class="icon">📋</span> Chi tiết chuyến</div>
+      
+      <div class="row">
+        <div class="field">
+          <label>Ngày <span class="required">*</span></label>
+          <input type="date" id="arriveDate">
+        </div>
+        <div class="field">
+          <label>Giờ <span class="required">*</span></label>
+          <input type="time" id="arriveTime">
+        </div>
+      </div>
+      
+      <div class="field">
+        <label>Địa điểm <span class="required">*</span></label>
+        <select id="location"><option value="">Đang tải...</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Số lô <span class="required">*</span></label>
+        <select id="lot"><option value="">Đang tải...</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Số km trên đồng hồ <span class="required">*</span></label>
+        <input type="number" id="km" placeholder="VD: 1500" inputmode="numeric">
+      </div>
+      
+      <div class="field">
+        <label>% pin trên đồng hồ <span class="required">*</span></label>
+        <input type="text" id="battery" placeholder="VD: 85%" inputmode="text">
+      </div>
+      
+      <div class="field">
+        <label>Nghiệp vụ <span class="required">*</span></label>
+        <div class="chips" id="taskChips"></div>
+      </div>
+      
+      <div class="field">
+        <label>Ghi chú</label>
+        <textarea id="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
+      </div>
+    </div>
+    
+    <button class="btn btn-primary" onclick="submitArrive()" id="btnArrive">
+      📍 Ghi nhận ĐẾN NƠI
+    </button>
+  </div>
+  
+  <!-- ===== ARRIVE SUCCESS (trip code) ===== -->
+  <div id="tab-arrive-success" class="hidden">
+    <div class="card">
+      <div class="trip-code-display">
+        <div style="font-size:48px; margin-bottom:8px;">✅</div>
+        <div style="font-size:18px; font-weight:600; color:var(--success);">Đã ghi nhận đến nơi!</div>
+        <div class="label" style="margin-top:24px;">Mã chuyến</div>
+        <div class="code" id="successTripCode">----</div>
+        <button class="btn-copy" id="btnCopyCode" onclick="copyTripCode()">
+          📋 Sao chép mã
+        </button>
+        <div class="hint">
+          Gửi mã này cho tài xế tiếp theo<br>nếu cần chuyển chuyến.
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="backToArrive()">📍 Tạo chuyến mới</button>
+    <button class="btn btn-outline" onclick="switchTab('pending')">⏳ Xem chuyến chờ rời đi</button>
+  </div>
+  
+  <!-- ===== PENDING TAB ===== -->
+  <div id="tab-pending" class="hidden">
+    
+    <!-- Sub-tabs: My trips vs Code search -->
+    <div class="sub-tabs">
+      <div class="sub-tab active" data-subtab="my-trips" onclick="switchSubTab('my-trips')">🚛 Chuyến của tôi</div>
+      <div class="sub-tab" data-subtab="code-search" onclick="switchSubTab('code-search')">🔑 Nhập mã chuyến</div>
+    </div>
+    
+    <!-- My trips sub-tab -->
+    <div id="subtab-my-trips">
+      <div id="pendingList">
+        <div class="empty-state">
+          <div class="icon">✅</div>
+          <p>Không có chuyến nào đang chờ</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Code search sub-tab -->
+    <div id="subtab-code-search" class="hidden">
+      <div class="card">
+        <div class="card-title"><span class="icon">🔑</span> Tìm chuyến bằng mã</div>
+        <div class="field">
+          <label>Nhập mã chuyến (4 ký tự)</label>
+          <div class="code-input-wrap">
+            <input type="text" id="searchCode" class="code-input" maxlength="4" placeholder="VD: A3K9" autocomplete="off" autocapitalize="characters">
+            <button class="btn-search" onclick="searchByCode()" id="btnSearch">🔍</button>
+          </div>
+        </div>
+      </div>
+      <div id="codeSearchResult"></div>
+    </div>
+  </div>
+  
+  <!-- ===== DEPART FORM ===== -->
+  <div id="tab-depart" class="hidden">
+    <div class="card">
+      <div class="card-title"><span class="icon">📍</span> Thông tin đến nơi</div>
+      <div id="departArriveInfo" style="font-size:14px; color:var(--gray-500); line-height:1.6;"></div>
+    </div>
+    
+    <div class="card">
+      <div class="card-title"><span class="icon">🚀</span> Thông tin rời đi</div>
+      
+      <div class="field">
+        <label>Tên lái xe <span class="required">*</span></label>
+        <select id="departDriver"><option value="">— Chọn —</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Biển số xe <span class="required">*</span></label>
+        <select id="departVehicle"><option value="">— Chọn —</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Biển số romooc <span class="required">*</span></label>
+        <select id="departTrailer"><option value="">— Giữ nguyên —</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Số km trên đồng hồ <span class="required">*</span></label>
+        <input type="number" id="departKm" placeholder="VD: 1520" inputmode="numeric">
+      </div>
+      
+      <div class="field">
+        <label>% pin trên đồng hồ <span class="required">*</span></label>
+        <input type="text" id="departBattery" placeholder="VD: 80%" inputmode="text">
+      </div>
+      
+      <div class="field">
+        <label>Số lô (khi rời đi) <span class="required">*</span></label>
+        <select id="departLot"><option value="">— Chọn —</option></select>
+      </div>
+      
+      <div class="field">
+        <label>Nghiệp vụ (khi rời đi) <span class="required">*</span></label>
+        <div class="chips" id="departTaskChips"></div>
+      </div>
+      
+      <div class="field">
+        <label>Ghi chú</label>
+        <textarea id="departNote" placeholder="Ghi chú thêm (nếu có)"></textarea>
+      </div>
+    </div>
+    
+    <button class="btn btn-success" onclick="submitDepart()" id="btnDepart">
+      🚀 Ghi nhận RỜI ĐI
+    </button>
+    <button class="btn btn-outline" onclick="switchTab('pending')">← Quay lại</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== CONFIG =====
+const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec';
+
+// ===== STATE =====
+let currentDepartRowId = null;
+let currentDepartSource = null; // 'local' or 'code'
+
+// ===== API HELPER =====
+async function postToAPI(payload) {
+  const url = API_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
+  const res = await fetch(url);
+  return await res.json();
+}
+
+// ===== INIT =====
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadConfig();
+  loadProfile();
+  setCurrentDateTime();
+  
+  ['driver', 'vehicle', 'trailer'].forEach(id => {
+    document.getElementById(id).addEventListener('change', saveProfile);
+  });
+  
+  // Auto-uppercase code input
+  document.getElementById('searchCode').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+  
+  // Search on Enter
+  document.getElementById('searchCode').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') searchByCode();
+  });
+});
+
+// ===== LOAD CONFIG =====
+async function loadConfig() {
+  try {
+    const data = await postToAPI({ action: 'getConfig' });
+    if (!data.config) throw new Error('No config');
+    const c = data.config;
+    
+    populateSelect('driver', c.drivers);
+    populateSelect('vehicle', c.vehicles);
+    populateSelect('trailer', c.trailers);
+    populateSelect('location', c.locations);
+    populateSelect('lot', c.lots);
+    populateSelect('departDriver', c.drivers);
+    populateSelect('departVehicle', c.vehicles);
+    populateSelect('departTrailer', c.trailers, '— Giữ nguyên —');
+    populateSelect('departLot', c.lots);
+    populateChips('taskChips', c.tasksArrive);
+    populateChips('departTaskChips', c.tasksDepart);
+  } catch (err) {
+    console.error('Config load failed:', err);
+    showToast('⚠️ Không tải được cấu hình');
+  }
+}
+
+function populateSelect(id, items, placeholder) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = `<option value="">${placeholder || '— Chọn —'}</option>`;
+  (items || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item;
+    opt.textContent = item;
+    sel.appendChild(opt);
+  });
+}
+
+function populateChips(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  (items || []).forEach(item => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.dataset.value = item;
+    chip.textContent = item;
+    chip.addEventListener('click', () => {
+      const wasSelected = chip.classList.contains('selected');
+      container.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      if (!wasSelected) chip.classList.add('selected');
+    });
+    container.appendChild(chip);
+  });
+}
+
+// ===== PROFILE =====
+function loadProfile() {
+  const profile = JSON.parse(localStorage.getItem('deltaProfile') || '{}');
+  if (profile.driver) document.getElementById('driver').value = profile.driver;
+  if (profile.vehicle) document.getElementById('vehicle').value = profile.vehicle;
+  if (profile.trailer) document.getElementById('trailer').value = profile.trailer;
+  updateDriverInfo();
+  
+  if (!profile.driver) {
+    document.getElementById('profileBadge').textContent = 'Chưa lưu';
+    document.getElementById('profileBadge').style.background = '#fee2e2';
+    document.getElementById('profileBadge').style.color = '#dc2626';
+  }
+}
+
+function saveProfile() {
+  const profile = {
+    driver: document.getElementById('driver').value,
+    vehicle: document.getElementById('vehicle').value,
+    trailer: document.getElementById('trailer').value,
+  };
+  localStorage.setItem('deltaProfile', JSON.stringify(profile));
+  document.getElementById('profileBadge').textContent = '✓ Đã lưu';
+  document.getElementById('profileBadge').style.background = '';
+  document.getElementById('profileBadge').style.color = '';
+  updateDriverInfo();
+}
+
+function updateDriverInfo() {
+  const driver = document.getElementById('driver').value;
+  const vehicle = document.getElementById('vehicle').value;
+  document.getElementById('driverInfo').textContent = 
+    driver ? `${driver} • ${vehicle || 'Chưa chọn xe'}` : 'Delta International';
+}
+
+// ===== DATE / TIME =====
+function setCurrentDateTime() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('arriveDate').value = `${y}-${m}-${d}`;
+  document.getElementById('arriveTime').value = `${h}:${min}`;
+}
+
+function getFormattedDateTime() {
+  const dateVal = document.getElementById('arriveDate').value; // YYYY-MM-DD
+  const timeVal = document.getElementById('arriveTime').value; // HH:mm
+  if (!dateVal || !timeVal) return '';
+  const [y, m, d] = dateVal.split('-');
+  return `${d}/${m}/${y} ${timeVal}`;
+}
+
+// ===== CHIPS =====
+function getSelectedChips(containerId) {
+  const chips = document.querySelectorAll(`#${containerId} .chip.selected`);
+  return Array.from(chips).map(c => c.dataset.value).join(', ');
+}
+
+function clearChips(containerId) {
+  document.querySelectorAll(`#${containerId} .chip`).forEach(c => c.classList.remove('selected'));
+}
+
+// ===== TABS =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const tabEl = document.querySelector(`.tab[data-tab="${tab}"]`);
+  if (tabEl) tabEl.classList.add('active');
+  
+  document.getElementById('tab-arrive').classList.toggle('hidden', tab !== 'arrive');
+  document.getElementById('tab-arrive-success').classList.toggle('hidden', tab !== 'arrive-success');
+  document.getElementById('tab-pending').classList.toggle('hidden', tab !== 'pending');
+  document.getElementById('tab-depart').classList.toggle('hidden', tab !== 'depart');
+  
+  if (tab === 'pending') {
+    document.querySelector('.tab[data-tab="pending"]')?.classList.add('active');
+    loadPending();
+  }
+  if (tab === 'arrive') setCurrentDateTime();
+}
+
+function switchSubTab(subtab) {
+  document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.sub-tab[data-subtab="${subtab}"]`)?.classList.add('active');
+  
+  document.getElementById('subtab-my-trips').classList.toggle('hidden', subtab !== 'my-trips');
+  document.getElementById('subtab-code-search').classList.toggle('hidden', subtab !== 'code-search');
+  
+  if (subtab === 'my-trips') loadPending();
+  if (subtab === 'code-search') {
+    document.getElementById('searchCode').value = '';
+    document.getElementById('codeSearchResult').innerHTML = '';
+    document.getElementById('searchCode').focus();
+  }
+}
+
+function backToArrive() {
+  switchTab('arrive');
+}
+
+// ===== SUBMIT ARRIVE =====
+async function submitArrive() {
+  const driver = document.getElementById('driver').value;
+  const vehicle = document.getElementById('vehicle').value;
+  const trailer = document.getElementById('trailer').value;
+  const datetime = getFormattedDateTime();
+  const location = document.getElementById('location').value;
+  const lot = document.getElementById('lot').value;
+  const km = document.getElementById('km').value;
+  const battery = document.getElementById('battery').value;
+  const task = getSelectedChips('taskChips');
+  
+  if (!driver || !vehicle || !trailer || !datetime || !location || !lot || !km || !battery || !task) {
+    showToast('❌ Vui lòng điền đầy đủ thông tin bắt buộc');
+    return;
+  }
+  
+  const btn = document.getElementById('btnArrive');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+  
+  try {
+    const payload = {
+      action: 'arrive',
+      datetime: datetime,
+      vehicle: vehicle,
+      trailer: trailer,
+      driver: driver,
+      location: location,
+      lot: lot,
+      km: km,
+      battery: battery,
+      task: task,
+      note: document.getElementById('note').value,
+    };
+    
+    const data = await postToAPI(payload);
+    
+    if (data.success) {
+      // Save to local pending
+      const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+      localPending.push({
+        rowId: data.rowId,
+        tripCode: data.tripCode || '',
+        time: payload.datetime,
+        vehicle: payload.vehicle,
+        trailer: payload.trailer,
+        driver: payload.driver,
+        location: payload.location,
+        lot: payload.lot,
+        km: payload.km,
+        battery: payload.battery,
+        task: payload.task,
+      });
+      localStorage.setItem('deltaPending', JSON.stringify(localPending));
+      
+      // Show success screen with trip code
+      document.getElementById('successTripCode').textContent = data.tripCode || '----';
+      switchTab('arrive-success');
+      resetArriveForm();
+    } else {
+      showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
+    }
+  } catch (err) {
+    showToast('❌ Lỗi kết nối: ' + err.message);
+  }
+  
+  btn.disabled = false;
+  btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
+}
+
+function resetArriveForm() {
+  document.getElementById('location').value = '';
+  document.getElementById('lot').value = '';
+  document.getElementById('km').value = '';
+  document.getElementById('battery').value = '';
+  document.getElementById('note').value = '';
+  clearChips('taskChips');
+  setCurrentDateTime();
+}
+
+// ===== COPY TRIP CODE =====
+function copyTripCode() {
+  const code = document.getElementById('successTripCode').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('btnCopyCode');
+    btn.classList.add('copied');
+    btn.innerHTML = '✅ Đã sao chép!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '📋 Sao chép mã';
+    }, 2000);
+  }).catch(() => {
+    showToast('📋 Mã: ' + code);
+  });
+}
+
+// ===== PENDING TRIPS =====
+function loadPending() {
+  const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+  const list = document.getElementById('pendingList');
+  
+  if (localPending.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <p>Không có chuyến nào đang chờ rời đi</p>
+      </div>`;
+    return;
+  }
+  
+  list.innerHTML = localPending.map((trip, idx) => `
+    <div class="pending-trip" onclick="openDepart(${idx}, 'local')">
+      <div class="trip-header">
+        <span class="trip-location">📍 ${trip.location}</span>
+        <span class="trip-time">${trip.time}</span>
+      </div>
+      <div class="trip-details">
+        ${trip.vehicle} • ${trip.trailer || 'Không mooc'} • ${trip.lot} • ${trip.task}
+      </div>
+      ${trip.tripCode ? `<div class="trip-code">MÃ: ${trip.tripCode}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ===== SEARCH BY CODE =====
+async function searchByCode() {
+  const code = document.getElementById('searchCode').value.trim().toUpperCase();
+  if (code.length !== 4) {
+    showToast('❌ Mã chuyến phải có 4 ký tự');
+    return;
+  }
+  
+  const btn = document.getElementById('btnSearch');
+  btn.disabled = true;
+  btn.innerHTML = '⏳';
+  
+  try {
+    const data = await postToAPI({ action: 'findByCode', code: code });
+    const resultDiv = document.getElementById('codeSearchResult');
+    
+    if (data.success && data.trip) {
+      const trip = data.trip;
+      resultDiv.innerHTML = `
+        <div class="pending-trip" onclick="openDepartFromSearch(${JSON.stringify(trip).replace(/"/g, '&quot;')})">
+          <div class="trip-header">
+            <span class="trip-location">📍 ${trip.location}</span>
+            <span class="trip-time">${trip.time}</span>
+          </div>
+          <div class="trip-details">
+            👤 ${trip.driver} • 🚛 ${trip.vehicle} • ${trip.trailer || ''}<br>
+            📦 ${trip.lot} • ${trip.task}
+          </div>
+          <div class="trip-code">MÃ: ${trip.tripCode}</div>
+          <div style="margin-top:12px; font-size:13px; color:var(--primary); font-weight:500;">
+            👆 Nhấn để ghi nhận rời đi
+          </div>
+        </div>`;
+    } else {
+      resultDiv.innerHTML = `
+        <div class="card" style="text-align:center; color:var(--danger);">
+          ❌ ${data.error || 'Không tìm thấy chuyến'}
+        </div>`;
+    }
+  } catch (err) {
+    showToast('❌ Lỗi: ' + err.message);
+  }
+  
+  btn.disabled = false;
+  btn.innerHTML = '🔍';
+}
+
+// ===== OPEN DEPART FORM =====
+function openDepart(idx, source) {
+  const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+  const trip = localPending[idx];
+  if (!trip) return;
+  
+  currentDepartRowId = trip.rowId;
+  currentDepartSource = 'local';
+  document.getElementById('tab-depart').dataset.pendingIdx = idx;
+  
+  fillDepartForm(trip);
+  switchTab('depart');
+}
+
+function openDepartFromSearch(trip) {
+  currentDepartRowId = trip.rowId;
+  currentDepartSource = 'code';
+  
+  fillDepartForm(trip);
+  switchTab('depart');
+}
+
+function fillDepartForm(trip) {
+  // Show arrival info
+  document.getElementById('departArriveInfo').innerHTML = `
+    <strong>${trip.location}</strong><br>
+    🕐 ${trip.time} • 👤 ${trip.driver || ''}<br>
+    🚛 ${trip.vehicle} • ${trip.trailer || 'Không mooc'}<br>
+    📦 ${trip.lot} • ${trip.task}<br>
+    ${trip.km ? '📏 ' + trip.km + ' km' : ''} ${trip.battery ? '🔋 ' + trip.battery : ''}
+    ${trip.tripCode ? '<br>🔑 Mã: <strong>' + trip.tripCode + '</strong>' : ''}
+  `;
+  
+  // Pre-fill departure fields from profile
+  const profile = JSON.parse(localStorage.getItem('deltaProfile') || '{}');
+  document.getElementById('departDriver').value = profile.driver || '';
+  document.getElementById('departVehicle').value = profile.vehicle || '';
+  
+  if (trip.trailer) {
+    document.getElementById('departTrailer').value = trip.trailer;
+  }
+  
+  // Clear other fields
+  document.getElementById('departKm').value = '';
+  document.getElementById('departBattery').value = '';
+  document.getElementById('departLot').value = '';
+  document.getElementById('departNote').value = '';
+  clearChips('departTaskChips');
+}
+
+// ===== SUBMIT DEPART =====
+async function submitDepart() {
+  const departDriver = document.getElementById('departDriver').value;
+  const departVehicle = document.getElementById('departVehicle').value;
+  const departTrailer = document.getElementById('departTrailer').value;
+  const departKm = document.getElementById('departKm').value;
+  const departBattery = document.getElementById('departBattery').value;
+  const departLot = document.getElementById('departLot').value;
+  const departTask = getSelectedChips('departTaskChips');
+  
+  if (!departDriver || !departVehicle || !departTrailer || !departKm || !departBattery || !departLot || !departTask) {
+    showToast('❌ Vui lòng điền đầy đủ thông tin bắt buộc');
+    return;
+  }
+  
+  const btn = document.getElementById('btnDepart');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+  
+  try {
+    const payload = {
+      action: 'depart',
+      rowId: currentDepartRowId,
+      driver: departDriver,
+      vehicle: departVehicle,
+      trailer: departTrailer,
+      km: departKm,
+      battery: departBattery,
+      lot: departLot,
+      task: departTask,
+      note: document.getElementById('departNote').value,
+    };
+    
+    const data = await postToAPI(payload);
+    
+    if (data.success) {
+      // Remove from local pending if source was local
+      if (currentDepartSource === 'local') {
+        const idx = parseInt(document.getElementById('tab-depart').dataset.pendingIdx);
+        const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+        localPending.splice(idx, 1);
+        localStorage.setItem('deltaPending', JSON.stringify(localPending));
+      }
+      
+      showToast('✅ Đã ghi nhận rời đi!');
+      switchTab('pending');
+    } else {
+      showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
+    }
+  } catch (err) {
+    showToast('❌ Lỗi kết nối: ' + err.message);
+  }
+  
+  btn.disabled = false;
+  btn.innerHTML = '🚀 Ghi nhận RỜI ĐI';
+}
+
+// ===== TOAST =====
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
