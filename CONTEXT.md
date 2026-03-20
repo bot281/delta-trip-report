@@ -15,8 +15,8 @@
 ## Deliverable: Trip Report Web App
 
 ### Live URLs
-- **Web App:** https://paulvu.github.io/delta-trip-report/
-- **GitHub Repo:** https://github.com/paulVu/delta-trip-report
+- **Web App:** https://bot281.github.io/delta-trip-report/
+- **GitHub Repo:** https://github.com/bot281/delta-trip-report
 - **Apps Script:** https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec
 - **Apps Script Project:** https://script.google.com/u/0/home/projects/16ysKXxiM5IL65cr4szDuh0JTMzzFQWDQEVY25vNMrIXzGZuXip-D-gQa/edit
 - **Google Sheet:** https://docs.google.com/spreadsheets/d/1yWzRFhSScCtNdMB8Dk82sY5v9RHYzQFYSerVQA3KKzE/edit

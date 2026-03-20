@@ -731,7 +731,9 @@ function getFormattedDateTime() {
   const timeVal = document.getElementById('arriveTime').value; // HH:mm
   if (!dateVal || !timeVal) return '';
   const [y, m, d] = dateVal.split('-');
-  return `${d}/${m}/${y} ${timeVal}`;
+  const now = new Date();
+  const sec = String(now.getSeconds()).padStart(2, '0');
+  return `${d}/${m}/${y} ${timeVal}:${sec}`;
 }
 
 // ===== CHIPS =====
@@ -1023,9 +1025,19 @@ async function submitDepart() {
   btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
   
   try {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mi = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const departDatetime = `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
+    
     const payload = {
       action: 'depart',
       rowId: currentDepartRowId,
+      datetime: departDatetime,
       driver: departDriver,
       vehicle: departVehicle,
       trailer: departTrailer,
