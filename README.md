@@ -20,8 +20,8 @@ This project replaces Delta Company's Google Form with a mobile-friendly web app
 ```
 
 ## URLs
-- **Live App**: https://paulvu.github.io/delta-trip-report/
-- **GitHub Repo**: https://github.com/paulVu/delta-trip-report
+- **Live App**: https://bot281.github.io/delta-trip-report/
+- **GitHub Repo**: https://github.com/bot281/delta-trip-report
 - **Backend**: https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec
 - **Google Sheet**: https://docs.google.com/spreadsheets/d/1yWzRFhSScCtNdMB8Dk82sY5v9RHYzQFYSerVQA3KKzE/edit
 

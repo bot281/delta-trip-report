@@ -2,8 +2,8 @@
 // Deploy as Web App (Execute as: Me, Access: Anyone)
 
 const SHEET_ID = '1yWzRFhSScCtNdMB8Dk82sY5v9RHYzQFYSerVQA3KKzE';
-const SHEET_NAME = 'Câu trả lời biểu mẫu 1';
-const CONFIG_SHEET = 'Cấu hình';
+const SHEET_NAME = 'Cau tra loi bieu mau 1';
+const CONFIG_SHEET = 'Cau hinh';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 // ===== ENTRY POINT (GET with ?data=JSON) =====
@@ -120,9 +120,12 @@ function generateTripCode(sheet) {
     }
   }
 
-  // Fallback: timestamp-based
-  return CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length)) +
-         String(Date.now()).slice(-3);
+  // Fallback: all random from CODE_CHARS
+  let fallback = '';
+  for (let i = 0; i < 4; i++) {
+    fallback += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
+  }
+  return fallback;
 }
 
 // ===== ARRIVE =====
