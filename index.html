@@ -519,7 +519,7 @@
         <div class="field">
           <label>Nhập mã chuyến (4 ký tự)</label>
           <div class="code-input-wrap">
-            <input type="text" id="searchCode" class="code-input" maxlength="4" placeholder="VD: A3K9" autocomplete="off" autocapitalize="characters">
+            <input type="text" id="searchCode" class="code-input" maxlength="4" placeholder="VD: A3K9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="latin">
             <button class="btn-search" onclick="searchByCode()" id="btnSearch">🔍</button>
           </div>
         </div>
@@ -615,13 +615,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById(id).addEventListener('change', saveProfile);
   });
   
-  // Auto-uppercase code input
-  document.getElementById('searchCode').addEventListener('input', (e) => {
-    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Auto-uppercase code input (IME-safe for Vietnamese keyboards)
+  const searchCodeInput = document.getElementById('searchCode');
+  let isComposingCode = false;
+  const normalizeTripCodeInput = () => {
+    searchCodeInput.value = searchCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  };
+  
+  searchCodeInput.addEventListener('compositionstart', () => {
+    isComposingCode = true;
+  });
+  
+  searchCodeInput.addEventListener('compositionend', () => {
+    isComposingCode = false;
+    normalizeTripCodeInput();
+  });
+  
+  searchCodeInput.addEventListener('input', () => {
+    if (!isComposingCode) normalizeTripCodeInput();
   });
   
   // Search on Enter
-  document.getElementById('searchCode').addEventListener('keydown', (e) => {
+  searchCodeInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchByCode();
   });
 });
