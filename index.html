@@ -522,6 +522,9 @@
             <input type="text" id="searchCode" class="code-input" maxlength="4" placeholder="VD: A3K9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="latin">
             <button class="btn-search" onclick="searchByCode()" id="btnSearch">🔍</button>
           </div>
+          <button class="btn btn-outline" type="button" onclick="manualCodeEntry()" style="margin-top:10px;">
+            ⌨️ Nhập mã thủ công
+          </button>
         </div>
       </div>
       <div id="codeSearchResult"></div>
@@ -619,7 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const searchCodeInput = document.getElementById('searchCode');
   let isComposingCode = false;
   const normalizeTripCodeInput = () => {
-    searchCodeInput.value = searchCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    searchCodeInput.value = normalizeTripCode(searchCodeInput.value);
   };
   
   searchCodeInput.addEventListener('compositionstart', () => {
@@ -957,8 +960,24 @@ function loadPending() {
 }
 
 // ===== SEARCH BY CODE =====
+function normalizeTripCode(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+}
+
+function manualCodeEntry() {
+  const raw = window.prompt('Nhập mã chuyến 4 ký tự, ví dụ: YUFJ');
+  if (raw === null) return;
+  const code = normalizeTripCode(raw);
+  document.getElementById('searchCode').value = code;
+  if (code.length === 4) {
+    searchByCode();
+  } else {
+    showToast('❌ Mã chuyến phải có đúng 4 ký tự');
+  }
+}
+
 async function searchByCode() {
-  const code = document.getElementById('searchCode').value.trim().toUpperCase();
+  const code = normalizeTripCode(document.getElementById('searchCode').value);
   if (code.length !== 4) {
     showToast('❌ Mã chuyến phải có 4 ký tự');
     return;
