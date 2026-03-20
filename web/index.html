@@ -926,21 +926,48 @@ async function searchByCode() {
     
     if (data.success && data.trip) {
       const trip = data.trip;
-      resultDiv.innerHTML = `
-        <div class="pending-trip" onclick="openDepartFromSearch(${JSON.stringify(trip).replace(/"/g, '&quot;')})">
-          <div class="trip-header">
-            <span class="trip-location">📍 ${trip.location}</span>
-            <span class="trip-time">${trip.time}</span>
-          </div>
-          <div class="trip-details">
-            👤 ${trip.driver} • 🚛 ${trip.vehicle} • ${trip.trailer || ''}<br>
-            📦 ${trip.lot} • ${trip.task}
-          </div>
-          <div class="trip-code">MÃ: ${trip.tripCode}</div>
-          <div style="margin-top:12px; font-size:13px; color:var(--primary); font-weight:500;">
-            👆 Nhấn để ghi nhận rời đi
-          </div>
-        </div>`;
+      
+      if (trip.status === 'completed') {
+        // Trip already completed — show history view
+        resultDiv.innerHTML = `
+          <div class="card" style="border: 1.5px solid var(--success);">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+              <span style="font-size:24px;">✅</span>
+              <span style="font-weight:600; color:var(--success);">Chuyến đã hoàn tất</span>
+            </div>
+            <div style="font-size:14px; color:var(--gray-500); line-height:1.8;">
+              <strong>📍 Đến nơi</strong><br>
+              🕐 ${trip.time} • 👤 ${trip.driver}<br>
+              🚛 ${trip.vehicle} • ${trip.trailer || 'Không mooc'}<br>
+              📦 ${trip.lot} • ${trip.task}<br>
+              ${trip.km ? '📏 ' + trip.km + ' km' : ''} ${trip.battery ? '🔋 ' + trip.battery + '%' : ''}
+              <hr style="border:none; border-top:1px solid var(--gray-200); margin:12px 0;">
+              <strong>🚀 Rời đi</strong><br>
+              🕐 ${trip.departTime} • 👤 ${trip.departDriver || trip.driver}<br>
+              🚛 ${trip.departVehicle || trip.vehicle} • ${trip.departTrailer || trip.trailer || ''}<br>
+              📦 ${trip.departLot || ''} • ${trip.departTask || ''}<br>
+              ${trip.departKm ? '📏 ' + trip.departKm + ' km' : ''} ${trip.departBattery ? '🔋 ' + trip.departBattery + '%' : ''}
+            </div>
+            <div class="trip-code" style="margin-top:12px;">MÃ: ${trip.tripCode}</div>
+          </div>`;
+      } else {
+        // Trip pending — show depart action
+        resultDiv.innerHTML = `
+          <div class="pending-trip" onclick="openDepartFromSearch(${JSON.stringify(trip).replace(/"/g, '&quot;')})">
+            <div class="trip-header">
+              <span class="trip-location">📍 ${trip.location}</span>
+              <span class="trip-time">${trip.time}</span>
+            </div>
+            <div class="trip-details">
+              👤 ${trip.driver} • 🚛 ${trip.vehicle} • ${trip.trailer || ''}<br>
+              📦 ${trip.lot} • ${trip.task}
+            </div>
+            <div class="trip-code">MÃ: ${trip.tripCode}</div>
+            <div style="margin-top:12px; font-size:13px; color:var(--primary); font-weight:500;">
+              👆 Nhấn để ghi nhận rời đi
+            </div>
+          </div>`;
+      }
     } else {
       resultDiv.innerHTML = `
         <div class="card" style="text-align:center; color:var(--danger);">

@@ -239,32 +239,45 @@ function handleFindByCode(sheet, data) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ error: 'Không tìm thấy chuyến' });
 
-  // Read columns A-U (1-21)
-  const allData = sheet.getRange(2, 1, lastRow - 1, 21).getValues();
+  // Read columns A-W (1-23)
+  const allData = sheet.getRange(2, 1, lastRow - 1, 23).getValues();
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
     const tripCode = String(row[20] || '').toUpperCase().trim();
     const departTime = row[11]; // L: Dấu thời gian
 
-    if (tripCode === code && !departTime) {
-      return jsonResponse({
-        success: true,
-        trip: {
-          rowId: i + 2,
-          time: row[0],
-          vehicle: row[2],
-          trailer: row[3],
-          driver: row[4],
-          location: row[5],
-          lot: row[6],
-          km: row[7],
-          battery: row[8],
-          task: row[9],
-          note: row[10],
-          tripCode: tripCode,
-        }
-      });
+    if (tripCode === code) {
+      const trip = {
+        rowId: i + 2,
+        time: row[0],
+        vehicle: row[2],
+        trailer: row[3],
+        driver: row[4],
+        location: row[5],
+        lot: row[6],
+        km: row[7],
+        battery: row[8],
+        task: row[9],
+        note: row[10],
+        tripCode: tripCode,
+        status: departTime ? 'completed' : 'pending',
+      };
+
+      // Include departure info if completed
+      if (departTime) {
+        trip.departTime = departTime;
+        trip.departTrailer = row[13];
+        trip.departKm = row[14];
+        trip.departBattery = row[15];
+        trip.departNote = row[16];
+        trip.departLot = row[17];
+        trip.departTask = row[18];
+        trip.departDriver = row[21] || row[4]; // V or fallback to arrival driver
+        trip.departVehicle = row[22] || row[2]; // W or fallback to arrival vehicle
+      }
+
+      return jsonResponse({ success: true, trip: trip });
     }
   }
 
