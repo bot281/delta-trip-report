@@ -1086,13 +1086,12 @@ function fillDepartForm(trip) {
 async function submitDepart() {
   const departDriver = document.getElementById('departDriver').value;
   const departVehicle = document.getElementById('departVehicle').value;
-  const departTrailerInput = document.getElementById('departTrailer').value;
-  const departTrailer = departTrailerInput || (currentDepartTrip && currentDepartTrip.trailer) || '';
+  const departTrailer = document.getElementById('departTrailer').value;
   const departKm = document.getElementById('departKm').value;
   const departBattery = document.getElementById('departBattery').value;
   const departLot = document.getElementById('departLot').value;
   const departTask = getSelectedChips('departTaskChips');
-  if (!departDriver || !departVehicle || !departKm || !departBattery || !departLot || !departTask) {
+  if (!departDriver || !departVehicle || !departTrailer || !departKm || !departBattery || !departLot || !departTask) {
     showToast('❌ Vui lòng điền đầy đủ thông tin bắt buộc'); return;
   }
   const departKmError = validateKm(departKm); if (departKmError) { showToast('❌ ' + departKmError); return; }

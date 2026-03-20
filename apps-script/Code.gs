@@ -402,12 +402,9 @@ function handleDepart(ss, sheet, data) {
   const now = new Date();
   const timestamp = Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
 
-  const arriveTrailer = String(sheet.getRange(rowId, 4).getValue() || '').trim();
-  const departTrailer = String(data.trailer || '').trim() || arriveTrailer;
-
   sheet.getRange(rowId, 12).setValue(timestamp);
   sheet.getRange(rowId, 13).setValue('Rời đi');
-  sheet.getRange(rowId, 14).setValue(departTrailer);
+  sheet.getRange(rowId, 14).setValue(data.trailer || '');
   sheet.getRange(rowId, 15).setValue(data.km || '');
   sheet.getRange(rowId, 16).setValue(data.battery || '');
   sheet.getRange(rowId, 17).setValue(data.note || '');
