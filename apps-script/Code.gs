@@ -4,7 +4,15 @@
 const SHEET_ID = '1yWzRFhSScCtNdMB8Dk82sY5v9RHYzQFYSerVQA3KKzE';
 const SHEET_NAME = 'Cau tra loi bieu mau 1';
 const CONFIG_SHEET = 'Cau hinh';
+const EXPENSE_SHEET = 'Chi Phi';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác'];
+const VAT_OPTIONS = [
+  { label: '10%', rate: 0.10 },
+  { label: '8%', rate: 0.08 },
+  { label: '0%', rate: 0.0 },
+  { label: 'Không hóa đơn', rate: '' },
+];
 
 // ===== ENTRY POINT (GET with ?data=JSON) =====
 function doGet(e) {
@@ -15,25 +23,7 @@ function doGet(e) {
     }
 
     const data = JSON.parse(dataParam);
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-
-    if (data.action === 'getConfig') {
-      return handleGetConfig(ss);
-    }
-
-    const sheet = ss.getSheetByName(SHEET_NAME);
-
-    if (data.action === 'arrive') {
-      return handleArrive(sheet, data);
-    } else if (data.action === 'depart') {
-      return handleDepart(sheet, data);
-    } else if (data.action === 'getPending') {
-      return handleGetPending(sheet, data);
-    } else if (data.action === 'findByCode') {
-      return handleFindByCode(sheet, data);
-    }
-
-    return jsonResponse({ error: 'Unknown action' });
+    return dispatchRequest(data);
   } catch (err) {
     return jsonResponse({ error: err.message });
   }
@@ -43,25 +33,35 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_NAME);
-
-    if (data.action === 'arrive') return handleArrive(sheet, data);
-    if (data.action === 'depart') return handleDepart(sheet, data);
-    if (data.action === 'getPending') return handleGetPending(sheet, data);
-    if (data.action === 'findByCode') return handleFindByCode(sheet, data);
-
-    return jsonResponse({ error: 'Unknown action' });
+    return dispatchRequest(data);
   } catch (err) {
     return jsonResponse({ error: err.message });
   }
+}
+
+function dispatchRequest(data) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+
+  if (data.action === 'getConfig') return handleGetConfig(ss);
+
+  const sheet = ss.getSheetByName(SHEET_NAME);
+
+  if (data.action === 'arrive') return handleArrive(ss, sheet, data);
+  if (data.action === 'depart') return handleDepart(ss, sheet, data);
+  if (data.action === 'getPending') return handleGetPending(sheet, data);
+  if (data.action === 'findByCode') return handleFindByCode(ss, sheet, data);
+  if (data.action === 'saveExpenses') return handleSaveExpenses(ss, sheet, data);
+
+  return jsonResponse({ error: 'Unknown action' });
 }
 
 // ===== CONFIG =====
 function handleGetConfig(ss) {
   const configSheet = ss.getSheetByName(CONFIG_SHEET);
   const lastRow = configSheet.getLastRow();
-  if (lastRow < 2) return jsonResponse({ config: {} });
+  if (lastRow < 2) {
+    return jsonResponse({ config: { expenseTypes: EXPENSE_TYPES, vatOptions: VAT_OPTIONS.map(v => v.label) } });
+  }
 
   const data = configSheet.getRange(2, 1, lastRow - 1, 7).getValues();
 
@@ -77,7 +77,6 @@ function handleGetConfig(ss) {
     if (row[6]) tasksDepart.push(String(row[6]).trim());
   });
 
-  // Deduplicate
   const unique = arr => [...new Set(arr)];
 
   return jsonResponse({
@@ -89,6 +88,8 @@ function handleGetConfig(ss) {
       lots: unique(lots),
       tasksArrive: unique(tasksArrive),
       tasksDepart: unique(tasksDepart),
+      expenseTypes: EXPENSE_TYPES,
+      vatOptions: VAT_OPTIONS.map(v => v.label),
     }
   });
 }
@@ -99,11 +100,9 @@ function generateTripCode(sheet) {
   const existingCodes = new Set();
 
   if (lastRow >= 2) {
-    // Column U = 21
     const codes = sheet.getRange(2, 21, lastRow - 1, 1).getValues();
     const departures = sheet.getRange(2, 12, lastRow - 1, 1).getValues();
     for (let i = 0; i < codes.length; i++) {
-      // Only active (no departure) codes matter for uniqueness
       if (!departures[i][0] && codes[i][0]) {
         existingCodes.add(String(codes[i][0]).toUpperCase());
       }
@@ -115,12 +114,9 @@ function generateTripCode(sheet) {
     for (let i = 0; i < 4; i++) {
       code += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
     }
-    if (!existingCodes.has(code)) {
-      return code;
-    }
+    if (!existingCodes.has(code)) return code;
   }
 
-  // Fallback: all random from CODE_CHARS
   let fallback = '';
   for (let i = 0; i < 4; i++) {
     fallback += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
@@ -147,9 +143,197 @@ function validateBatteryValue(value) {
   return null;
 }
 
+function getVatRate(vatType) {
+  for (let i = 0; i < VAT_OPTIONS.length; i++) {
+    if (VAT_OPTIONS[i].label === vatType) return VAT_OPTIONS[i].rate;
+  }
+  return '';
+}
+
+function normalizeExpenseRows(rows) {
+  const result = [];
+  (rows || []).forEach(raw => {
+    const type = String(raw.type || '').trim();
+    const amountRaw = String(raw.amount || '').trim();
+    const vatType = String(raw.vatType || '').trim();
+    const expenseName = String(raw.expenseName || raw.customName || '').trim();
+    const note = String(raw.note || '').trim();
+    const amount = parseWholeNumber(amountRaw);
+
+    const isBlank = !type && !amountRaw && !vatType && !expenseName && !note;
+    if (isBlank) return;
+
+    if (!type || EXPENSE_TYPES.indexOf(type) === -1) {
+      throw new Error('Loại chi phí không hợp lệ');
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Số tiền chi phí phải lớn hơn 0');
+    }
+    if (!vatType || VAT_OPTIONS.map(v => v.label).indexOf(vatType) === -1) {
+      throw new Error('VAT chi phí không hợp lệ');
+    }
+    if (type === 'Khác' && !expenseName) {
+      throw new Error('Vui lòng nhập tên phí cho mục Khác');
+    }
+
+    result.push({
+      type: type,
+      amount: amount,
+      vatType: vatType,
+      vatRate: getVatRate(vatType),
+      expenseName: type === 'Khác' ? expenseName : expenseName,
+      note: note,
+    });
+  });
+  return result;
+}
+
+function ensureExpenseSheet(ss) {
+  let sheet = ss.getSheetByName(EXPENSE_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(EXPENSE_SHEET);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      'timestamp',
+      'tripCode',
+      'rowId',
+      'phase',
+      'driver',
+      'vehicle',
+      'trailer',
+      'location',
+      'lot',
+      'task',
+      'expenseType',
+      'expenseName',
+      'amount',
+      'vatType',
+      'vatRate',
+      'note',
+      'createdBy',
+    ]);
+  }
+  return sheet;
+}
+
+function findRowByTripCode(sheet, tripCode) {
+  const code = String(tripCode || '').trim().toUpperCase();
+  if (!code) return null;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  const codes = sheet.getRange(2, 21, lastRow - 1, 1).getValues();
+  for (let i = 0; i < codes.length; i++) {
+    if (String(codes[i][0] || '').trim().toUpperCase() === code) return i + 2;
+  }
+  return null;
+}
+
+function getPhaseContext(row, phase) {
+  if (phase === 'departure') {
+    return {
+      driver: row[21] || row[4] || '',
+      vehicle: row[22] || row[2] || '',
+      trailer: row[13] || row[3] || '',
+      location: row[5] || '',
+      lot: row[17] || '',
+      task: row[18] || '',
+    };
+  }
+  return {
+    driver: row[4] || '',
+    vehicle: row[2] || '',
+    trailer: row[3] || '',
+    location: row[5] || '',
+    lot: row[6] || '',
+    task: row[9] || '',
+  };
+}
+
+function saveExpenseRows(ss, sheet, options) {
+  const expenses = normalizeExpenseRows(options.expenses || []);
+  if (!expenses.length) return 0;
+
+  const phase = String(options.phase || '').trim();
+  if (['arrival', 'departure'].indexOf(phase) === -1) {
+    throw new Error('Phase chi phí không hợp lệ');
+  }
+
+  let rowId = Number(options.rowId || 0);
+  let tripCode = String(options.tripCode || '').trim().toUpperCase();
+
+  if (!rowId && tripCode) {
+    rowId = findRowByTripCode(sheet, tripCode);
+  }
+  if (!rowId) throw new Error('Không xác định được chuyến để lưu chi phí');
+
+  const row = sheet.getRange(rowId, 1, 1, 23).getValues()[0];
+  tripCode = tripCode || String(row[20] || '').trim().toUpperCase();
+  if (!tripCode) throw new Error('Chuyến chưa có mã chuyến');
+
+  if (phase === 'departure' && !row[11]) {
+    // Allow departure expenses after arrival if team wants to prefill later? keep permissive.
+  }
+
+  const ctx = getPhaseContext(row, phase);
+  const expenseSheet = ensureExpenseSheet(ss);
+  const timestamp = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
+  const createdBy = String(options.createdBy || ctx.driver || '').trim();
+
+  const rows = expenses.map(item => [
+    timestamp,
+    tripCode,
+    rowId,
+    phase,
+    ctx.driver,
+    ctx.vehicle,
+    ctx.trailer,
+    ctx.location,
+    ctx.lot,
+    ctx.task,
+    item.type,
+    item.expenseName,
+    item.amount,
+    item.vatType,
+    item.vatRate,
+    item.note,
+    createdBy,
+  ]);
+
+  expenseSheet.getRange(expenseSheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+  return rows.length;
+}
+
+function getExpensesByTripCode(ss, tripCode) {
+  const expenseSheet = ss.getSheetByName(EXPENSE_SHEET);
+  const result = { arrival: [], departure: [] };
+  if (!expenseSheet || expenseSheet.getLastRow() < 2) return result;
+
+  const allRows = expenseSheet.getRange(2, 1, expenseSheet.getLastRow() - 1, 17).getValues();
+  const code = String(tripCode || '').trim().toUpperCase();
+
+  allRows.forEach(row => {
+    if (String(row[1] || '').trim().toUpperCase() !== code) return;
+    const phase = String(row[3] || '').trim();
+    const item = {
+      timestamp: row[0],
+      type: row[10],
+      expenseName: row[11],
+      amount: row[12],
+      vatType: row[13],
+      vatRate: row[14],
+      note: row[15],
+    };
+    if (phase === 'departure') result.departure.push(item);
+    else result.arrival.push(item);
+  });
+
+  return result;
+}
+
 // ===== ARRIVE =====
-function handleArrive(sheet, data) {
-  // v2: datetime includes date (DD/MM/YYYY HH:mm:ss)
+function handleArrive(ss, sheet, data) {
   const timeStr = data.datetime || data.time || '';
 
   const kmError = validateKmValue(data.km);
@@ -158,38 +342,48 @@ function handleArrive(sheet, data) {
   const batteryError = validateBatteryValue(data.battery);
   if (batteryError) return jsonResponse({ error: batteryError });
 
-  // Columns A-K
   const row = [
-    timeStr,                    // A: Thời gian đến nơi (now DD/MM/YYYY HH:mm)
-    'Đến nơi',                  // B: Đến nơi / Rời đi
-    data.vehicle || '',         // C: Mã số xe / Biển số xe
-    data.trailer || '',         // D: Biển số romooc
-    data.driver || '',          // E: Tên lái xe
-    data.location || '',        // F: Địa điểm
-    data.lot || '',             // G: Số lô
-    data.km || '',              // H: Số km trên đồng hồ
-    data.battery || '',         // I: % pin trên đồng hồ
-    data.task || '',            // J: Nghiệp vụ
-    data.note || '',            // K: Ghi chú
+    timeStr,
+    'Đến nơi',
+    data.vehicle || '',
+    data.trailer || '',
+    data.driver || '',
+    data.location || '',
+    data.lot || '',
+    data.km || '',
+    data.battery || '',
+    data.task || '',
+    data.note || '',
   ];
 
   sheet.appendRow(row);
   const lastRow = sheet.getLastRow();
 
-  // Generate and store trip code in column U (21)
   const tripCode = generateTripCode(sheet);
   sheet.getRange(lastRow, 21).setValue(tripCode);
+
+  let savedExpenses = 0;
+  if (data.expenses && data.expenses.length) {
+    savedExpenses = saveExpenseRows(ss, sheet, {
+      rowId: lastRow,
+      tripCode: tripCode,
+      phase: 'arrival',
+      expenses: data.expenses,
+      createdBy: data.driver || '',
+    });
+  }
 
   return jsonResponse({
     success: true,
     rowId: lastRow,
     tripCode: tripCode,
+    savedExpenses: savedExpenses,
     message: 'Đã ghi nhận đến nơi'
   });
 }
 
 // ===== DEPART =====
-function handleDepart(sheet, data) {
+function handleDepart(ss, sheet, data) {
   const rowId = data.rowId;
   if (!rowId) return jsonResponse({ error: 'Missing rowId' });
 
@@ -199,7 +393,7 @@ function handleDepart(sheet, data) {
   const batteryError = validateBatteryValue(data.battery);
   if (batteryError) return jsonResponse({ error: batteryError });
 
-  const arriveKm = parseWholeNumber(sheet.getRange(rowId, 8).getValue()); // H
+  const arriveKm = parseWholeNumber(sheet.getRange(rowId, 8).getValue());
   const departKm = parseWholeNumber(data.km);
   if (Number.isFinite(arriveKm) && Number.isFinite(departKm) && departKm < arriveKm) {
     return jsonResponse({ error: 'Km rời đi không được nhỏ hơn km đến nơi' });
@@ -208,24 +402,52 @@ function handleDepart(sheet, data) {
   const now = new Date();
   const timestamp = Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
 
-  // Columns L-S (12-19)
-  sheet.getRange(rowId, 12).setValue(timestamp);                    // L: Dấu thời gian
-  sheet.getRange(rowId, 13).setValue('Rời đi');                     // M: Đến nơi / Rời đi (Chỉnh sửa)
-  sheet.getRange(rowId, 14).setValue(data.trailer || '');            // N: Biển số romooc (Chỉnh sửa)
-  sheet.getRange(rowId, 15).setValue(data.km || '');                 // O: Số km trên đồng hồ (Chỉnh sửa)
-  sheet.getRange(rowId, 16).setValue(data.battery || '');            // P: % pin trên đồng hồ (Chỉnh sửa)
-  sheet.getRange(rowId, 17).setValue(data.note || '');               // Q: Ghi chú (Chỉnh sửa)
-  sheet.getRange(rowId, 18).setValue(data.lot || '');                // R: Số lô (khi rời đi)
-  sheet.getRange(rowId, 19).setValue(data.task || '');               // S: Nghiệp vụ (khi rời đi)
+  sheet.getRange(rowId, 12).setValue(timestamp);
+  sheet.getRange(rowId, 13).setValue('Rời đi');
+  sheet.getRange(rowId, 14).setValue(data.trailer || '');
+  sheet.getRange(rowId, 15).setValue(data.km || '');
+  sheet.getRange(rowId, 16).setValue(data.battery || '');
+  sheet.getRange(rowId, 17).setValue(data.note || '');
+  sheet.getRange(rowId, 18).setValue(data.lot || '');
+  sheet.getRange(rowId, 19).setValue(data.task || '');
 
-  // v2: Departure driver & vehicle in columns V (22) and W (23)
-  if (data.driver) sheet.getRange(rowId, 22).setValue(data.driver); // V: Tên lái xe (rời đi)
-  if (data.vehicle) sheet.getRange(rowId, 23).setValue(data.vehicle); // W: Biển số xe (rời đi)
+  if (data.driver) sheet.getRange(rowId, 22).setValue(data.driver);
+  if (data.vehicle) sheet.getRange(rowId, 23).setValue(data.vehicle);
+
+  const tripCode = String(sheet.getRange(rowId, 21).getValue() || '').trim().toUpperCase();
+  let savedExpenses = 0;
+  if (data.expenses && data.expenses.length) {
+    savedExpenses = saveExpenseRows(ss, sheet, {
+      rowId: rowId,
+      tripCode: tripCode,
+      phase: 'departure',
+      expenses: data.expenses,
+      createdBy: data.driver || '',
+    });
+  }
 
   return jsonResponse({
     success: true,
+    savedExpenses: savedExpenses,
     message: 'Đã ghi nhận rời đi'
   });
+}
+
+function handleSaveExpenses(ss, sheet, data) {
+  const phase = String(data.phase || '').trim();
+  if (['arrival', 'departure'].indexOf(phase) === -1) {
+    return jsonResponse({ error: 'Phase không hợp lệ' });
+  }
+
+  const saved = saveExpenseRows(ss, sheet, {
+    rowId: data.rowId,
+    tripCode: data.tripCode,
+    phase: phase,
+    expenses: data.expenses || [],
+    createdBy: data.createdBy || data.driver || '',
+  });
+
+  return jsonResponse({ success: true, savedExpenses: saved, message: 'Đã lưu chi phí' });
 }
 
 // ===== GET PENDING (by driver name) =====
@@ -236,14 +458,13 @@ function handleGetPending(sheet, data) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ pending: [] });
 
-  // Read columns A-U (1-21)
   const allData = sheet.getRange(2, 1, lastRow - 1, 21).getValues();
   const pending = [];
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
-    const rowDriver = row[4];   // E: Tên lái xe
-    const departTime = row[11]; // L: Dấu thời gian (departure)
+    const rowDriver = row[4];
+    const departTime = row[11];
 
     if (rowDriver === driver && !departTime) {
       pending.push({
@@ -258,7 +479,7 @@ function handleGetPending(sheet, data) {
         battery: row[8],
         task: row[9],
         note: row[10],
-        tripCode: row[20] || '', // U: Mã chuyến
+        tripCode: row[20] || '',
       });
     }
   }
@@ -267,7 +488,7 @@ function handleGetPending(sheet, data) {
 }
 
 // ===== FIND BY CODE =====
-function handleFindByCode(sheet, data) {
+function handleFindByCode(ss, sheet, data) {
   const code = (data.code || '').toUpperCase().trim();
   if (!code || code.length !== 4) {
     return jsonResponse({ error: 'Mã chuyến phải có 4 ký tự' });
@@ -276,13 +497,12 @@ function handleFindByCode(sheet, data) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ error: 'Không tìm thấy chuyến' });
 
-  // Read columns A-W (1-23)
   const allData = sheet.getRange(2, 1, lastRow - 1, 23).getValues();
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
     const tripCode = String(row[20] || '').toUpperCase().trim();
-    const departTime = row[11]; // L: Dấu thời gian
+    const departTime = row[11];
 
     if (tripCode === code) {
       const trip = {
@@ -299,9 +519,9 @@ function handleFindByCode(sheet, data) {
         note: row[10],
         tripCode: tripCode,
         status: departTime ? 'completed' : 'pending',
+        expenses: getExpensesByTripCode(ss, tripCode),
       };
 
-      // Include departure info if completed
       if (departTime) {
         trip.departTime = departTime;
         trip.departTrailer = row[13];
@@ -310,8 +530,8 @@ function handleFindByCode(sheet, data) {
         trip.departNote = row[16];
         trip.departLot = row[17];
         trip.departTask = row[18];
-        trip.departDriver = row[21] || row[4]; // V or fallback to arrival driver
-        trip.departVehicle = row[22] || row[2]; // W or fallback to arrival vehicle
+        trip.departDriver = row[21] || row[4];
+        trip.departVehicle = row[22] || row[2];
       }
 
       return jsonResponse({ success: true, trip: trip });
