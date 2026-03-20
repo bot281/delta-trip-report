@@ -128,10 +128,35 @@ function generateTripCode(sheet) {
   return fallback;
 }
 
+function parseWholeNumber(value) {
+  const cleaned = String(value || '').trim().replace(/[^0-9]/g, '');
+  if (!cleaned) return NaN;
+  return Number(cleaned);
+}
+
+function validateKmValue(value) {
+  const km = parseWholeNumber(value);
+  if (!Number.isFinite(km) || km < 0) return 'Số km phải là số nguyên không âm';
+  return null;
+}
+
+function validateBatteryValue(value) {
+  const battery = parseWholeNumber(value);
+  if (!Number.isFinite(battery)) return 'Pin phải là số từ 0 đến 100';
+  if (battery < 0 || battery > 100) return 'Pin phải nằm trong khoảng 0-100%';
+  return null;
+}
+
 // ===== ARRIVE =====
 function handleArrive(sheet, data) {
   // v2: datetime includes date (DD/MM/YYYY HH:mm:ss)
   const timeStr = data.datetime || data.time || '';
+
+  const kmError = validateKmValue(data.km);
+  if (kmError) return jsonResponse({ error: kmError });
+
+  const batteryError = validateBatteryValue(data.battery);
+  if (batteryError) return jsonResponse({ error: batteryError });
 
   // Columns A-K
   const row = [
@@ -167,6 +192,18 @@ function handleArrive(sheet, data) {
 function handleDepart(sheet, data) {
   const rowId = data.rowId;
   if (!rowId) return jsonResponse({ error: 'Missing rowId' });
+
+  const kmError = validateKmValue(data.km);
+  if (kmError) return jsonResponse({ error: kmError });
+
+  const batteryError = validateBatteryValue(data.battery);
+  if (batteryError) return jsonResponse({ error: batteryError });
+
+  const arriveKm = parseWholeNumber(sheet.getRange(rowId, 8).getValue()); // H
+  const departKm = parseWholeNumber(data.km);
+  if (Number.isFinite(arriveKm) && Number.isFinite(departKm) && departKm < arriveKm) {
+    return jsonResponse({ error: 'Km rời đi không được nhỏ hơn km đến nơi' });
+  }
 
   const now = new Date();
   const timestamp = Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');

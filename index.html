@@ -596,6 +596,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1
 // ===== STATE =====
 let currentDepartRowId = null;
 let currentDepartSource = null; // 'local' or 'code'
+let currentDepartTrip = null;
 
 // ===== API HELPER =====
 async function postToAPI(payload) {
@@ -746,6 +747,26 @@ function clearChips(containerId) {
   document.querySelectorAll(`#${containerId} .chip`).forEach(c => c.classList.remove('selected'));
 }
 
+function parseWholeNumber(value) {
+  const cleaned = String(value || '').trim().replace(/[^0-9]/g, '');
+  if (!cleaned) return NaN;
+  return Number(cleaned);
+}
+
+function validateBattery(value) {
+  const battery = parseWholeNumber(value);
+  if (!Number.isFinite(battery)) return 'Pin phải là số từ 0 đến 100';
+  if (battery < 0 || battery > 100) return 'Pin phải nằm trong khoảng 0-100%';
+  return null;
+}
+
+function validateKm(value) {
+  const km = parseWholeNumber(value);
+  if (!Number.isFinite(km)) return 'Số km phải là số nguyên không âm';
+  if (km < 0) return 'Số km không được âm';
+  return null;
+}
+
 // ===== TABS =====
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -797,6 +818,18 @@ async function submitArrive() {
   
   if (!driver || !vehicle || !trailer || !datetime || !location || !lot || !km || !battery || !task) {
     showToast('❌ Vui lòng điền đầy đủ thông tin bắt buộc');
+    return;
+  }
+
+  const kmError = validateKm(km);
+  if (kmError) {
+    showToast('❌ ' + kmError);
+    return;
+  }
+
+  const batteryError = validateBattery(battery);
+  if (batteryError) {
+    showToast('❌ ' + batteryError);
     return;
   }
   
@@ -1005,6 +1038,7 @@ function openDepartFromSearch(trip) {
 }
 
 function fillDepartForm(trip) {
+  currentDepartTrip = trip;
   // Show arrival info
   document.getElementById('departArriveInfo').innerHTML = `
     <strong>${trip.location}</strong><br>
@@ -1044,6 +1078,25 @@ async function submitDepart() {
   
   if (!departDriver || !departVehicle || !departTrailer || !departKm || !departBattery || !departLot || !departTask) {
     showToast('❌ Vui lòng điền đầy đủ thông tin bắt buộc');
+    return;
+  }
+
+  const departKmError = validateKm(departKm);
+  if (departKmError) {
+    showToast('❌ ' + departKmError);
+    return;
+  }
+
+  const departBatteryError = validateBattery(departBattery);
+  if (departBatteryError) {
+    showToast('❌ ' + departBatteryError);
+    return;
+  }
+
+  const arriveKm = currentDepartTrip ? parseWholeNumber(currentDepartTrip.km) : NaN;
+  const departKmNum = parseWholeNumber(departKm);
+  if (Number.isFinite(arriveKm) && Number.isFinite(departKmNum) && departKmNum < arriveKm) {
+    showToast(`❌ Km rời đi (${departKmNum}) không được nhỏ hơn km đến nơi (${arriveKm})`);
     return;
   }
   
