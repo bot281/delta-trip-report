@@ -204,7 +204,7 @@ function ensureExpenseSheet(ss) {
       'vehicle',
       'trailer',
       'location',
-      'lot',
+      'Số lô',
       'task',
       'expenseType',
       'expenseName',
