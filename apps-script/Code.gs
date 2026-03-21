@@ -51,6 +51,7 @@ function dispatchRequest(data) {
   if (data.action === 'getPending') return handleGetPending(sheet, data);
   if (data.action === 'findByCode') return handleFindByCode(ss, sheet, data);
   if (data.action === 'saveExpenses') return handleSaveExpenses(ss, sheet, data);
+  if (data.action === 'refreshReports') return handleRefreshReports();
 
   return jsonResponse({ error: 'Unknown action' });
 }
@@ -542,6 +543,11 @@ function handleFindByCode(ss, sheet, data) {
 }
 
 // ===== UTILS =====
+function handleRefreshReports() {
+  refreshAllReports();
+  return jsonResponse({ success: true, message: 'Đã refresh toàn bộ báo cáo' });
+}
+
 function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
