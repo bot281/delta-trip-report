@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Delta - Báo Cáo Hành Trình</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a56db">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -557,6 +559,11 @@
 
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec';
+
+// Register Service Worker for offline support
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 const EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác'];
 const VAT_OPTIONS = ['10%', '8%', '0%', 'Không hóa đơn'];
 let currentDepartRowId = null;
@@ -574,9 +581,10 @@ async function postToAPI(payload) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadConfig();
+  loadConfigInstant(); // Show cached data immediately
   loadProfile();
   setCurrentDateTime();
+  loadConfigFresh();   // Fetch fresh in background
   ['driver', 'vehicle', 'trailer'].forEach(id => {
     document.getElementById(id).addEventListener('change', saveProfile);
   });
@@ -589,26 +597,65 @@ document.addEventListener('DOMContentLoaded', async () => {
   searchCodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchByCode(); });
 });
 
-async function loadConfig() {
+// Show cached config instantly (no network wait)
+function loadConfigInstant() {
   try {
-    const data = await postToAPI({ action: 'getConfig' });
+    const cached = localStorage.getItem('deltaConfig');
+    if (!cached) return;
+    const c = JSON.parse(cached);
+    applyConfig(c);
+  } catch (err) {
+    console.warn('No cached config:', err);
+  }
+}
+
+// Fetch fresh config in background, update if changed
+async function loadConfigFresh() {
+  try {
+    const savedVersion = localStorage.getItem('deltaConfigVersion') || '';
+    const data = await postToAPI({ action: 'getConfig', version: savedVersion });
+
+    if (data.unchanged) {
+      // Config hasn't changed, cached version is still valid
+      return;
+    }
+
     if (!data.config) throw new Error('No config');
     const c = data.config;
-    populateSelect('driver', c.drivers);
-    populateSelect('vehicle', c.vehicles);
-    populateSelect('trailer', c.trailers);
-    populateSelect('location', c.locations);
-    populateSelect('lot', c.lots);
-    populateSelect('departDriver', c.drivers);
-    populateSelect('departVehicle', c.vehicles);
-    populateSelect('departTrailer', c.trailers, '— Giữ nguyên —');
-    populateSelect('departLot', c.lots);
-    populateChips('taskChips', c.tasksArrive);
-    populateChips('departTaskChips', c.tasksDepart);
+
+    // Save to localStorage for instant load next time
+    localStorage.setItem('deltaConfig', JSON.stringify(c));
+    if (data.version) localStorage.setItem('deltaConfigVersion', data.version);
+
+    // Apply to UI
+    applyConfig(c);
   } catch (err) {
-    console.error('Config load failed:', err);
-    showToast('⚠️ Không tải được cấu hình');
+    console.error('Config refresh failed:', err);
+    // If no cached data was shown, show error
+    if (!localStorage.getItem('deltaConfig')) {
+      showToast('⚠️ Không tải được cấu hình');
+    }
   }
+}
+
+function applyConfig(c) {
+  const profile = JSON.parse(localStorage.getItem('deltaProfile') || '{}');
+  populateSelect('driver', c.drivers);
+  populateSelect('vehicle', c.vehicles);
+  populateSelect('trailer', c.trailers);
+  populateSelect('location', c.locations);
+  populateSelect('lot', c.lots);
+  populateSelect('departDriver', c.drivers);
+  populateSelect('departVehicle', c.vehicles);
+  populateSelect('departTrailer', c.trailers, '— Giữ nguyên —');
+  populateSelect('departLot', c.lots);
+  populateChips('taskChips', c.tasksArrive);
+  populateChips('departTaskChips', c.tasksDepart);
+  // Restore profile selections after repopulating
+  if (profile.driver) document.getElementById('driver').value = profile.driver;
+  if (profile.vehicle) document.getElementById('vehicle').value = profile.vehicle;
+  if (profile.trailer) document.getElementById('trailer').value = profile.trailer;
+  updateDriverInfo();
 }
 
 function populateSelect(id, items, placeholder) {
