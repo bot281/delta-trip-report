@@ -869,7 +869,7 @@ function removeExpenseRow(btn, target) {
 function isTollRelated(type) {
   if (!type) return false;
   const t = type.toLowerCase();
-  return t.includes('vé cổng') || t.includes('vetc') || t.includes('thu phí') || t.includes('toll');
+  return t.includes('trạm thu phí') || t.includes('tram thu phi') || t.includes('toll');
 }
 
 function handleExpenseTypeChange(selectEl) {
