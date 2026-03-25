@@ -564,7 +564,8 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-const EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác'];
+let EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác']; // updated from config
+let TOLL_STATIONS = []; // loaded from config (col K)
 const VAT_OPTIONS = ['10%', '8%', '0%', 'Không hóa đơn'];
 let currentDepartRowId = null;
 let currentDepartSource = null;
@@ -651,6 +652,9 @@ function applyConfig(c) {
   populateSelect('departLot', c.lots);
   populateChips('taskChips', c.tasksArrive);
   populateChips('departTaskChips', c.tasksDepart);
+  // Update expense types and toll stations from config
+  if (c.expenseTypes && c.expenseTypes.length) EXPENSE_TYPES = c.expenseTypes;
+  if (c.tollStations) TOLL_STATIONS = c.tollStations;
   // Restore profile selections after repopulating
   if (profile.driver) document.getElementById('driver').value = profile.driver;
   if (profile.vehicle) document.getElementById('vehicle').value = profile.vehicle;
@@ -810,7 +814,9 @@ function backToArrive() { switchTab('arrive'); }
 function createExpenseRowHtml(target, values = {}) {
   const typeOptions = ['<option value="">— Chọn loại phí —</option>'].concat(EXPENSE_TYPES.map(item => `<option value="${item}" ${values.type === item ? 'selected' : ''}>${item}</option>`)).join('');
   const vatOptions = ['<option value="">— Chọn VAT —</option>'].concat(VAT_OPTIONS.map(item => `<option value="${item}" ${values.vatType === item ? 'selected' : ''}>${item}</option>`)).join('');
+  const tollOptions = ['<option value="">— Chọn trạm —</option>'].concat(TOLL_STATIONS.map(item => `<option value="${item}" ${values.tollStation === item ? 'selected' : ''}>${item}</option>`)).join('');
   const showCustom = values.type === 'Khác';
+  const showToll = isTollRelated(values.type);
   return `
     <div class="expense-row">
       <div class="expense-row-header">
@@ -820,6 +826,10 @@ function createExpenseRowHtml(target, values = {}) {
       <div class="field">
         <label>Loại phí</label>
         <select class="expense-type" onchange="handleExpenseTypeChange(this)">${typeOptions}</select>
+      </div>
+      <div class="field expense-toll-wrap ${showToll ? '' : 'hidden'}">
+        <label>Trạm thu phí</label>
+        <select class="expense-toll">${tollOptions}</select>
       </div>
       <div class="field expense-name-wrap ${showCustom ? '' : 'hidden'}">
         <label>Tên phí / Ghi chú loại phí</label>
@@ -856,10 +866,18 @@ function removeExpenseRow(btn, target) {
   updateExpenseSummary(target);
 }
 
+function isTollRelated(type) {
+  if (!type) return false;
+  const t = type.toLowerCase();
+  return t.includes('vé cổng') || t.includes('vetc') || t.includes('thu phí') || t.includes('toll');
+}
+
 function handleExpenseTypeChange(selectEl) {
   const row = selectEl.closest('.expense-row');
-  const wrap = row.querySelector('.expense-name-wrap');
-  wrap.classList.toggle('hidden', selectEl.value !== 'Khác');
+  const nameWrap = row.querySelector('.expense-name-wrap');
+  nameWrap.classList.toggle('hidden', selectEl.value !== 'Khác');
+  const tollWrap = row.querySelector('.expense-toll-wrap');
+  if (tollWrap) tollWrap.classList.toggle('hidden', !isTollRelated(selectEl.value));
 }
 
 function getExpenseContainer(target) {
@@ -894,7 +912,8 @@ function collectExpenses(target) {
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) throw new Error('Số tiền chi phí phải lớn hơn 0');
     if (!vatType) throw new Error('Vui lòng chọn VAT');
     if (type === 'Khác' && !expenseName.trim()) throw new Error('Vui lòng nhập tên phí cho mục Khác');
-    expenses.push({ type, amount: parsedAmount, vatType, expenseName: expenseName.trim(), note: note.trim() });
+    const tollStation = row.querySelector('.expense-toll')?.value || '';
+    expenses.push({ type, amount: parsedAmount, vatType, expenseName: expenseName.trim(), note: note.trim(), tollStation });
   }
   return expenses;
 }
@@ -1021,7 +1040,7 @@ function renderExpenseHistory(title, items) {
       <strong>${title}</strong>
       ${items.map(item => `
         <div class="history-expense-item">
-          • ${escapeHtml(item.type)}${item.expenseName ? ' - ' + escapeHtml(item.expenseName) : ''}: <strong>${formatMoney(item.amount)} đ</strong> • VAT ${escapeHtml(item.vatType || '')}${item.note ? '<br>📝 ' + escapeHtml(item.note) : ''}
+          • ${escapeHtml(item.type)}${item.tollStation ? ' @ ' + escapeHtml(item.tollStation) : ''}${item.expenseName ? ' - ' + escapeHtml(item.expenseName) : ''}: <strong>${formatMoney(item.amount)} đ</strong> • VAT ${escapeHtml(item.vatType || '')}${item.note ? '<br>📝 ' + escapeHtml(item.note) : ''}
         </div>`).join('')}
     </div>`;
 }

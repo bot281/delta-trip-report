@@ -6,7 +6,7 @@ const SHEET_NAME = 'Cau tra loi bieu mau 1';
 const CONFIG_SHEET = 'Cau hinh';
 const EXPENSE_SHEET = 'Chi Phi';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác'];
+const EXPENSE_TYPES_FALLBACK = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác']; // fallback if col L empty
 const VAT_OPTIONS = [
   { label: '10%', rate: 0.10 },
   { label: '8%', rate: 0.08 },
@@ -94,9 +94,10 @@ function handleGetConfig(clientVersion) {
   const lastRow = configSheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ config: {}, version: currentVersion });
 
-  const data = configSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  const data = configSheet.getRange(2, 1, lastRow - 1, 12).getValues();
 
   const vehicles = [], trailers = [], drivers = [], locations = [], lots = [], tasksArrive = [], tasksDepart = [];
+  const tollStations = [], expenseTypes = [];
 
   data.forEach(row => {
     if (row[0]) vehicles.push(String(row[0]).trim());
@@ -106,6 +107,8 @@ function handleGetConfig(clientVersion) {
     if (row[4]) lots.push(String(row[4]).trim());
     if (row[5]) tasksArrive.push(String(row[5]).trim());
     if (row[6]) tasksDepart.push(String(row[6]).trim());
+    if (row[10]) tollStations.push(String(row[10]).trim());  // col K
+    if (row[11]) expenseTypes.push(String(row[11]).trim());   // col L
   });
 
   const unique = arr => [...new Set(arr)];
@@ -117,7 +120,8 @@ function handleGetConfig(clientVersion) {
     lots: unique(lots),
     tasksArrive: unique(tasksArrive),
     tasksDepart: unique(tasksDepart),
-    expenseTypes: EXPENSE_TYPES,
+    expenseTypes: unique(expenseTypes).length > 0 ? unique(expenseTypes) : EXPENSE_TYPES_FALLBACK,
+    tollStations: unique(tollStations),
     vatOptions: VAT_OPTIONS.map(v => v.label),
   };
 
@@ -344,6 +348,7 @@ function saveExpenseRows(ss, sheet, options) {
       '',
       item.note || '',
       options.createdBy,
+      item.tollStation || '',   // col R: Trạm thu phí
     ]);
   }
 
@@ -419,10 +424,10 @@ function handleFindByCode(ss, sheet, data) {
     if (expenseSheet) {
       const expLastRow = expenseSheet.getLastRow();
       if (expLastRow >= 2) {
-        const expData = expenseSheet.getRange(2, 1, expLastRow - 1, 17).getValues();
+        const expData = expenseSheet.getRange(2, 1, expLastRow - 1, 18).getValues();
         for (const er of expData) {
           if (String(er[1]).toUpperCase() === code || Number(er[2]) === matchRow) {
-            const expense = { type: er[10], expenseName: er[11], amount: er[12], vatType: er[13], note: er[15] };
+            const expense = { type: er[10], expenseName: er[11], amount: er[12], vatType: er[13], note: er[15], tollStation: er[17] || '' };
             if (er[3] === 'departure') departureExpenses.push(expense);
             else arrivalExpenses.push(expense);
           }
