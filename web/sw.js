@@ -1,5 +1,5 @@
 // Service Worker for Delta Trip Report — offline shell caching
-const CACHE_NAME = 'delta-trip-v4';
+const CACHE_NAME = 'delta-trip-v5';
 const SHELL_URLS = ['./', './index.html'];
 
 self.addEventListener('install', event => {
