@@ -913,6 +913,7 @@ function collectExpenses(target) {
     if (!vatType) throw new Error('Vui lòng chọn VAT');
     if (type === 'Khác' && !expenseName.trim()) throw new Error('Vui lòng nhập tên phí cho mục Khác');
     const tollStation = row.querySelector('.expense-toll')?.value || '';
+    if (isTollRelated(type) && !tollStation) throw new Error('Vui lòng chọn tên trạm thu phí');
     expenses.push({ type, amount: parsedAmount, vatType, expenseName: expenseName.trim(), note: note.trim(), tollStation });
   }
   return expenses;
