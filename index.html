@@ -574,10 +574,23 @@ let currentExpensePhase = 'arrival';
 let previousTabBeforeExpense = 'pending';
 let lastArriveSuccessTrip = null;
 
-async function postToAPI(payload) {
+async function postToAPI(payload, retries = 2) {
   const url = API_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
-  const res = await fetch(url);
-  return await res.json();
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return await res.json();
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw new Error(err.name === 'AbortError' ? 'Hết thời gian kết nối (30s). Thử lại sau.' : err.message);
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -661,13 +674,17 @@ function applyConfig(c) {
 function populateSelect(id, items, placeholder) {
   const sel = document.getElementById(id);
   if (!sel) return;
-  sel.innerHTML = `<option value="">${placeholder || '— Chọn —'}</option>`;
+  const frag = document.createDocumentFragment();
+  const def = document.createElement('option');
+  def.value = ''; def.textContent = placeholder || '— Chọn —';
+  frag.appendChild(def);
   (items || []).forEach(item => {
     const opt = document.createElement('option');
-    opt.value = item;
-    opt.textContent = item;
-    sel.appendChild(opt);
+    opt.value = item; opt.textContent = item;
+    frag.appendChild(opt);
   });
+  sel.innerHTML = '';
+  sel.appendChild(frag);
 }
 
 function populateChips(containerId, items) {

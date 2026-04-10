@@ -360,7 +360,7 @@ function saveExpenseRows(ss, sheet, options) {
   return rows.length;
 }
 
-// ===== GET PENDING (optimized: scan last 200 rows only) =====
+// ===== GET PENDING (optimized: scan last 2 days ~100 rows) =====
 function handleGetPending(sheet, data) {
   const driver = data.driver;
   if (!driver) return jsonResponse({ error: 'Missing driver' });
@@ -368,7 +368,8 @@ function handleGetPending(sheet, data) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ pending: [] });
 
-  const scanRows = Math.min(lastRow - 1, 200);
+  // Scan last ~100 rows (2 days) instead of 200
+  const scanRows = Math.min(lastRow - 1, 100);
   const startRow = lastRow - scanRows + 1;
   const allData = sheet.getRange(startRow, 1, scanRows, 21).getValues();
   const pending = [];
@@ -399,7 +400,7 @@ function handleGetPending(sheet, data) {
   return jsonResponse({ pending: pending });
 }
 
-// ===== FIND BY CODE (optimized: TextFinder) =====
+// ===== FIND BY CODE (optimized: scan last 2 days only) =====
 function handleFindByCode(ss, sheet, data) {
   const code = (data.code || '').toUpperCase().trim();
   if (!code || code.length !== 4) {
@@ -409,7 +410,10 @@ function handleFindByCode(ss, sheet, data) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonResponse({ error: 'Khong tim thay chuyen' });
 
-  const codeColumn = sheet.getRange(2, 21, lastRow - 1, 1);
+  // Only scan last ~100 rows (2 days) instead of entire sheet
+  const scanRows = Math.min(lastRow - 1, 100);
+  const startRow = lastRow - scanRows + 1;
+  const codeColumn = sheet.getRange(startRow, 21, scanRows, 1);
   const finder = codeColumn.createTextFinder(code).matchEntireCell(true).matchCase(false);
   const matches = finder.findAll();
 
