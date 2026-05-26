@@ -461,6 +461,7 @@
       <div class="sub-tab" data-subtab="code-search" onclick="switchSubTab('code-search')">🔑 Nhập mã chuyến</div>
     </div>
     <div id="subtab-my-trips">
+      <button class="btn btn-outline btn-sm" id="btnRefreshPending" onclick="loadPending()" style="margin-bottom:12px;">🔄 Làm mới danh sách</button>
       <div id="pendingList">
         <div class="empty-state"><div class="icon">✅</div><p>Không có chuyến nào đang chờ</p></div>
       </div>
@@ -1000,8 +1001,47 @@ function copyTripCode() {
   }).catch(() => showToast('📋 Mã: ' + code));
 }
 
-function loadPending() {
-  const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+async function loadPending() {
+  let localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+
+  // Hiển thị ngay danh sách cục bộ (kể cả khi offline)
+  renderPendingList(localPending);
+  if (localPending.length === 0) return;
+
+  const refreshBtn = document.getElementById('btnRefreshPending');
+  if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.innerHTML = '<span class="spinner"></span> Đang làm mới...'; }
+
+  // Đối chiếu server: ẩn các chuyến đã RỜI ĐI rồi — kể cả khi tài xế ca sau rời đi
+  // bằng mã chuyến trên máy khác — để TX ca trước không phải rời đi lại / ghi đè dữ liệu.
+  // Dùng findByCode (đã chỉ quét ~2 ngày gần nhất). Chỉ ẩn khi server xác nhận 'completed'
+  // đúng dòng; pending / không thấy / lỗi mạng → GIỮ (an toàn offline, không xoá nhầm).
+  try {
+    const checks = await Promise.all(localPending.map(trip => {
+      if (!trip.tripCode) return Promise.resolve({ trip, keep: true });
+      return postToAPI({ action: 'findByCode', code: trip.tripCode })
+        .then(r => {
+          const t = r && r.success && r.trip;
+          if (t && r.trip.rowId === trip.rowId && r.trip.status === 'completed') {
+            return { trip, keep: false };
+          }
+          return { trip, keep: true };
+        })
+        .catch(() => ({ trip, keep: true }));
+    }));
+    const kept = checks.filter(c => c.keep).map(c => c.trip);
+    if (kept.length !== localPending.length) {
+      localPending = kept;
+      localStorage.setItem('deltaPending', JSON.stringify(localPending));
+      renderPendingList(localPending);
+    }
+  } catch (e) {
+    // Đối chiếu thất bại → giữ nguyên danh sách cục bộ
+  } finally {
+    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.innerHTML = '🔄 Làm mới danh sách'; }
+  }
+}
+
+function renderPendingList(localPending) {
   const list = document.getElementById('pendingList');
   if (localPending.length === 0) {
     list.innerHTML = `<div class="empty-state"><div class="icon">✅</div><p>Không có chuyến nào đang chờ rời đi</p></div>`;
