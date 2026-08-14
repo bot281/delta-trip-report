@@ -594,9 +594,74 @@ async function postToAPI(payload, retries = 2) {
   }
 }
 
+// ===== 📝 NHẬT KÝ SỰ KIỆN (14/08/2026) =====
+// Vì sao có: T8/2026 tỉ lệ chuyến MẤT nửa "rời đi" tăng 1,5% (T6) → 4,2% (01-12/08),
+// rải đều CẢ 4 tài xế trên 4 máy khác nhau ⇒ nghi lỗi app chứ không phải TX quên bấm.
+// Hiện không có cách nào biết app đã gửi hay chưa, nên app tự ghi lại MỌI lần bấm gửi
+// + kết quả, rồi đối chiếu với L891: chuyến mất là do "app không gửi được" hay
+// "gửi rồi mà sheet không nhận".
+// Hàng đợi để trong localStorage → mất mạng/tắt app vẫn không mất log, lần sau gửi tiếp.
+// Nguyên tắc: log KHÔNG BAO GIỜ được làm hỏng nghiệp vụ chính (mọi lỗi đều nuốt).
+const EVLOG_KEY = 'deltaEventLog';
+const EVLOG_MAX = 300;   // giữ tối đa 300 sự kiện chưa gửi được
+let evlogFlushing = false;
+
+function evlogNow() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function logEvent(kind, info) {
+  try {
+    const q = JSON.parse(localStorage.getItem(EVLOG_KEY) || '[]');
+    const profile = JSON.parse(localStorage.getItem('deltaProfile') || '{}');
+    const i = info || {};
+    q.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      ts: evlogNow(),
+      kind: kind,
+      driver: i.driver || profile.driver || '',
+      vehicle: i.vehicle || profile.vehicle || '',
+      rowId: i.rowId || '',
+      tripCode: i.tripCode || '',
+      detail: String(i.detail || '').slice(0, 150),
+      online: navigator.onLine ? 1 : 0,
+    });
+    localStorage.setItem(EVLOG_KEY, JSON.stringify(q.slice(-EVLOG_MAX)));
+  } catch (err) { /* hết chỗ lưu / localStorage bị khoá → bỏ qua, không cản TX */ }
+  // hoãn 1,5s: để request nghiệp vụ (đến nơi/rời đi) đi trước, log không tranh đường mạng
+  setTimeout(flushEventLog, 1500);
+}
+
+async function flushEventLog() {
+  if (evlogFlushing) return;
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem(EVLOG_KEY) || '[]'); } catch (err) { return; }
+  if (!q.length) return;
+  evlogFlushing = true;
+  try {
+    const batch = q.slice(0, 3);   // gửi ít một: postToAPI nhét payload vào URL, tránh URL quá dài
+    const data = await postToAPI({ action: 'logEvent', events: batch }, 0);
+    if (data && data.success) {
+      const sent = {};
+      batch.forEach(e => { sent[e.id] = 1; });
+      let rest = [];
+      try { rest = JSON.parse(localStorage.getItem(EVLOG_KEY) || '[]').filter(e => !sent[e.id]); } catch (err) { rest = []; }
+      localStorage.setItem(EVLOG_KEY, JSON.stringify(rest));
+      evlogFlushing = false;
+      if (rest.length) flushEventLog();       // còn thì gửi tiếp
+      return;
+    }
+    // backend chưa có action 'logEvent' (bản cũ trả {error:'Unknown action'})
+    // → GIỮ NGUYÊN hàng đợi, im lặng. App vẫn chạy bình thường như trước.
+  } catch (err) { /* mất mạng → giữ lại, lần sau gửi */ }
+  evlogFlushing = false;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   loadConfigInstant(); // Show cached data immediately
   loadProfile();
+  flushEventLog();     // gửi nốt log của lần dùng trước (nếu lần đó mất mạng)
   setCurrentDateTime();
   loadConfigFresh();   // Fetch fresh in background
   ['driver', 'vehicle', 'trailer'].forEach(id => {
@@ -961,8 +1026,10 @@ async function submitArrive() {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
   try {
     const payload = { action: 'arrive', datetime, vehicle, trailer, driver, location, lot, km, battery, task, note: document.getElementById('note').value, expenses };
+    logEvent('arrive_gui', { driver, vehicle, detail: `${location} | lô ${lot} | km ${km} | pin ${battery}` });
     const data = await postToAPI(payload);
     if (data.success) {
+      logEvent('arrive_ok', { driver, vehicle, rowId: data.rowId, tripCode: data.tripCode || '' });
       const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
       const trip = { rowId: data.rowId, tripCode: data.tripCode || '', time: payload.datetime, vehicle, trailer, driver, location, lot, km, battery, task };
       localPending.push(trip);
@@ -973,9 +1040,11 @@ async function submitArrive() {
       resetArriveForm();
       if (data.savedExpenses) showToast(`✅ Đã ghi nhận đến nơi + ${data.savedExpenses} khoản chi phí`);
     } else {
+      logEvent('arrive_loi', { driver, vehicle, detail: 'server trả lỗi: ' + (data.error || 'Không rõ') });
       showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
     }
   } catch (err) {
+    logEvent('arrive_mat_ket_noi', { driver, vehicle, detail: err.message });
     showToast('❌ Lỗi kết nối: ' + err.message);
   }
   btn.disabled = false; btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
@@ -1208,6 +1277,7 @@ async function submitDepart() {
   let expenses = [];
   try { expenses = collectExpenses('depart'); } catch (err) { showToast('❌ ' + err.message); return; }
   const btn = document.getElementById('btnDepart');
+  const departTripCode = (currentDepartTrip && currentDepartTrip.tripCode) || '';  // khai ngoài try để catch dùng được
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
   try {
     const now = new Date();
@@ -1219,8 +1289,11 @@ async function submitDepart() {
     const ss = String(now.getSeconds()).padStart(2, '0');
     const departDatetime = `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
     const payload = { action: 'depart', rowId: currentDepartRowId, datetime: departDatetime, driver: departDriver, vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery, lot: departLot, task: departTask, note: document.getElementById('departNote').value, expenses };
+    logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                             tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
     const data = await postToAPI(payload);
     if (data.success) {
+      logEvent('roi_di_ok', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId, tripCode: departTripCode });
       if (currentDepartSource === 'local') {
         const idx = parseInt(document.getElementById('tab-depart').dataset.pendingIdx);
         const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
@@ -1231,9 +1304,13 @@ async function submitDepart() {
       switchTab('pending');
       clearExpenseRows('depart');
     } else {
+      logEvent('roi_di_loi', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                               tripCode: departTripCode, detail: 'server trả lỗi: ' + (data.error || 'Không rõ') });
       showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
     }
   } catch (err) {
+    logEvent('roi_di_mat_ket_noi', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                                     tripCode: departTripCode, detail: err.message });
     showToast('❌ Lỗi kết nối: ' + err.message);
   }
   btn.disabled = false; btn.innerHTML = '🚀 Ghi nhận RỜI ĐI';

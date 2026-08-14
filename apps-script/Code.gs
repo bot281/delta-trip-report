@@ -44,6 +44,8 @@ function doGet(e) {
       return handleFindByCode(ss, sheet, data);
     } else if (data.action === 'saveExpenses') {
       return handleSaveExpenses(ss, sheet, data);
+    } else if (data.action === 'logEvent') {
+      return handleLogEvent(ss, data);
     }
 
     return jsonResponse({ error: 'Unknown action' });
@@ -64,6 +66,7 @@ function doPost(e) {
     if (data.action === 'getPending') return handleGetPending(sheet, data);
     if (data.action === 'findByCode') return handleFindByCode(ss, sheet, data);
     if (data.action === 'saveExpenses') return handleSaveExpenses(ss, sheet, data);
+    if (data.action === 'logEvent') return handleLogEvent(ss, data);
 
     return jsonResponse({ error: 'Unknown action' });
   } catch (err) {
@@ -472,6 +475,35 @@ function handleFindByCode(ss, sheet, data) {
   }
 
   return jsonResponse({ error: 'Khong tim thay chuyen với mã: ' + code });
+}
+
+// ===== 📝 NHẬT KÝ SỰ KIỆN APP (thêm 14/08/2026) =====
+// App tài xế gửi lên mọi lần bấm "đến nơi"/"rời đi" + kết quả, để đối chiếu với L891:
+// chuyến mất nửa "rời đi" là do app KHÔNG GỬI ĐƯỢC hay GỬI RỒI MÀ SHEET KHÔNG NHẬN.
+// Ghi sang tab riêng nên không đụng gì tới dữ liệu nghiệp vụ.
+const LOG_SHEET = 'App Log';
+const LOG_HEADER = ['Giờ trên máy TX', 'Giờ server nhận', 'Sự kiện', 'Tài xế', 'Xe',
+                    'rowId', 'Mã chuyến', 'Chi tiết', 'Mạng', 'ID sự kiện'];
+
+function handleLogEvent(ss, data) {
+  const events = (data && data.events) || [];
+  if (!events.length) return jsonResponse({ success: true, saved: 0 });
+
+  let sh = ss.getSheetByName(LOG_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(LOG_SHEET);
+    sh.getRange(1, 1, 1, LOG_HEADER.length).setValues([LOG_HEADER]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  const now = new Date();
+  const rows = events.map(function (ev) {
+    ev = ev || {};
+    return [ev.ts || '', now, ev.kind || '', ev.driver || '', ev.vehicle || '',
+            ev.rowId || '', ev.tripCode || '', String(ev.detail || '').slice(0, 200),
+            ev.online === 1 ? 'có mạng' : 'mất mạng', ev.id || ''];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, LOG_HEADER.length).setValues(rows);
+  return jsonResponse({ success: true, saved: rows.length });
 }
 
 // ===== UTILS =====
