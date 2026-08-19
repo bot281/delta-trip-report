@@ -567,7 +567,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJ
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-6';
+const APP_VERSION = '2026.08.19-7';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -603,8 +603,20 @@ let lastArriveSuccessTrip = null;
 // ===== 19/08/2026: mã chống trùng cho mỗi lần ghi + khoá nút sau khi gửi =====
 // clientId giữ NGUYÊN khi TX gửi lại cùng một chuyến (chỉ đổi khi đã ghi thành công),
 // để khi backend Code.gs được cập nhật thì server tự bỏ qua bản gửi lặp.
-let arriveClientId = '';
-let departClientId = '';
+// 19/08 v5: giữ clientId trong localStorage. Trước đây nó chỉ là biến trong RAM: TX gửi
+// lỗi rồi TẮT/TẢI LẠI trang thì mất clientId, lần gửi lại sinh mã mới ⇒ nếu lần đầu thật
+// ra ĐÃ vào sheet thì thành 2 dòng. Nay giữ nguyên mã cho tới khi ghi thành công.
+let arriveClientId = localStorage.getItem('deltaArriveCid') || '';
+let departClientId = localStorage.getItem('deltaDepartCid') || '';
+
+function setArriveCid(v) {
+  arriveClientId = v;
+  if (v) localStorage.setItem('deltaArriveCid', v); else localStorage.removeItem('deltaArriveCid');
+}
+function setDepartCid(v) {
+  departClientId = v;
+  if (v) localStorage.setItem('deltaDepartCid', v); else localStorage.removeItem('deltaDepartCid');
+}
 
 function newClientId() {
   try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
@@ -1090,7 +1102,7 @@ async function submitArrive() {
   const btn = document.getElementById('btnArrive');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
   try {
-    if (!arriveClientId) arriveClientId = newClientId();   // giữ nguyên nếu TX gửi lại cùng chuyến
+    if (!arriveClientId) setArriveCid(newClientId());   // giữ nguyên nếu TX gửi lại cùng chuyến (kể cả sau khi tải lại trang)
     const payload = { action: 'arrive', clientId: arriveClientId, datetime, vehicle, trailer, driver, location, lot, km, battery, task, note: document.getElementById('note').value, expenses };
     logEvent('arrive_gui', { driver, vehicle, detail: `${location} | lô ${lot} | km ${km} | pin ${battery}` });
     const data = await postToAPI(payload);
@@ -1101,7 +1113,7 @@ async function submitArrive() {
       localPending.push(trip);
       localStorage.setItem('deltaPending', JSON.stringify(localPending));
       lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
-      arriveClientId = '';                                  // đã ghi xong → lần sau là chuyến mới
+      setArriveCid('');                                     // đã ghi xong → lần sau là chuyến mới
       document.getElementById('successTripCode').textContent = data.tripCode || '----';
       switchTab('arrive-success');
       resetArriveForm();
@@ -1124,7 +1136,7 @@ async function submitArrive() {
         localPending.push(trip);
         localStorage.setItem('deltaPending', JSON.stringify(localPending));
         lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
-        arriveClientId = '';
+        setArriveCid('');
         document.getElementById('successTripCode').textContent = found.tripCode || '----';
         switchTab('arrive-success');
         resetArriveForm();
@@ -1461,7 +1473,7 @@ async function submitDepart() {
     const mi = String(now.getMinutes()).padStart(2, '0');
     const ss = String(now.getSeconds()).padStart(2, '0');
     const departDatetime = `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
-    if (!departClientId) departClientId = newClientId();
+    if (!departClientId) setDepartCid(newClientId());
     const payload = { action: 'depart', clientId: departClientId, rowId: currentDepartRowId, tripCode: departTripCode, datetime: departDatetime, driver: departDriver, vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery, lot: departLot, task: departTask, note: document.getElementById('departNote').value, expenses };
     logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
                              tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
@@ -1474,7 +1486,7 @@ async function submitDepart() {
         localPending.splice(idx, 1);
         localStorage.setItem('deltaPending', JSON.stringify(localPending));
       }
-      departClientId = '';
+      setDepartCid('');
       showToast(data.savedExpenses ? `✅ Đã ghi nhận rời đi + ${data.savedExpenses} khoản chi phí` : '✅ Đã ghi nhận rời đi!');
       switchTab('pending');
       clearExpenseRows('depart');
