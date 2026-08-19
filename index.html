@@ -1574,6 +1574,16 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+// Hien so ban o cuoi trang de TX/dieu phoi biet may da nap ban moi chua
+(function showVersion() {
+  try {
+    const el = document.createElement('div');
+    el.id = 'appVersionTag';
+    el.style.cssText = 'text-align:center;font-size:12px;color:#9aa0a6;padding:14px 0 22px';
+    el.textContent = 'Phiên bản ' + APP_VERSION;
+    document.body.appendChild(el);
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
