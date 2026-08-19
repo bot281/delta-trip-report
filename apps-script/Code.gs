@@ -180,8 +180,62 @@ function generateTripCode(sheet) {
 }
 
 // ===== ARRIVE =====
+// ===== 19/08/2026: CHẶN GHI TRÙNG THEO clientId =====
+// Vì sao: app tài xế bị lỗi ĐỌC phản hồi (Safari) nên trước đây tự gửi lại 3 lần →
+// mỗi lần gửi lại tạo THÊM 1 dòng (19/08 có chuyến bị nhân tới 8 dòng).
+// Frontend (commit 2efb586) đã bỏ tự gửi lại và gắn clientId cho mỗi lần ghi.
+// Backend chặn nốt: cùng clientId thì KHÔNG ghi thêm, trả lại kết quả lần đầu.
+var CLIENT_ID_COL = 24;          // cột X — Mã chống trùng
+var CLIENT_ID_TTL = 21600;       // 6 giờ trong CacheService
+
+function cidGet(clientId) {
+  if (!clientId) return null;
+  try {
+    var hit = CacheService.getScriptCache().get('cid_' + clientId);
+    return hit ? JSON.parse(hit) : null;
+  } catch (e) { return null; }
+}
+
+function cidPut(clientId, obj) {
+  if (!clientId) return;
+  try {
+    CacheService.getScriptCache().put('cid_' + clientId, JSON.stringify(obj), CLIENT_ID_TTL);
+  } catch (e) {}
+}
+
+// Fallback khi cache đã hết hạn/bị xoá: quét cột X của 200 dòng cuối
+function findRowByClientId(sheet, clientId) {
+  if (!clientId) return 0;
+  var lastRow = sheet.getLastRow();
+  var start = Math.max(4, lastRow - 200);
+  var n = lastRow - start + 1;
+  if (n <= 0) return 0;
+  var vals = sheet.getRange(start, CLIENT_ID_COL, n, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (vals[i][0] && String(vals[i][0]) === String(clientId)) return start + i;
+  }
+  return 0;
+}
+
 function handleArrive(ss, sheet, data) {
   const timeStr = data.datetime || data.time || '';
+  const clientId = data.clientId || '';
+
+  // Bản gửi lặp (app retry / TX bấm lại) → trả kết quả cũ, KHÔNG tạo dòng mới
+  if (clientId) {
+    const cached = cidGet(clientId);
+    if (cached) {
+      return jsonResponse({ success: true, duplicate: true, rowId: cached.rowId,
+                            tripCode: cached.tripCode, savedExpenses: 0,
+                            message: 'Ban gui lap - da ghi truoc do' });
+    }
+    const dupRow = findRowByClientId(sheet, clientId);
+    if (dupRow) {
+      return jsonResponse({ success: true, duplicate: true, rowId: dupRow,
+                            tripCode: sheet.getRange(dupRow, 21).getValue(),
+                            savedExpenses: 0, message: 'Ban gui lap - da ghi truoc do' });
+    }
+  }
 
   const row = [
     timeStr,                    // A
@@ -212,6 +266,10 @@ function handleArrive(ss, sheet, data) {
 
   const tripCode = generateTripCode(sheet);
   sheet.getRange(insertRow, 21).setValue(tripCode);
+  if (clientId) {
+    sheet.getRange(insertRow, CLIENT_ID_COL).setValue(clientId);
+    cidPut(clientId, { rowId: insertRow, tripCode: tripCode });
+  }
 
   // Save expenses if provided
   let savedExpenses = 0;
@@ -239,6 +297,19 @@ function handleDepart(ss, sheet, data) {
   const rowId = data.rowId;
   if (!rowId) return jsonResponse({ error: 'Missing rowId' });
 
+  // 19/08/2026 — chặn ghi trùng: cùng clientId, hoặc dòng đã có dấu thời gian rời đi
+  const clientIdDep = data.clientId || '';
+  if (clientIdDep && cidGet(clientIdDep)) {
+    return jsonResponse({ success: true, duplicate: true, savedExpenses: 0,
+                          message: 'Ban gui lap - da ghi truoc do' });
+  }
+  const existingDepart = sheet.getRange(rowId, 12).getValue();
+  if (existingDepart) {
+    if (clientIdDep) cidPut(clientIdDep, { rowId: rowId, tripCode: sheet.getRange(rowId, 21).getValue() });
+    return jsonResponse({ success: true, duplicate: true, savedExpenses: 0,
+                          message: 'Chuyen nay da ghi roi di truoc do' });
+  }
+
   const now = new Date();
   const timestamp = Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
 
@@ -257,6 +328,8 @@ function handleDepart(ss, sheet, data) {
   if (data.driver || data.vehicle) {
     sheet.getRange(rowId, 22, 1, 2).setValues([[data.driver || '', data.vehicle || '']]);
   }
+
+  if (clientIdDep) cidPut(clientIdDep, { rowId: rowId, tripCode: sheet.getRange(rowId, 21).getValue() });
 
   // Save expenses if provided
   let savedExpenses = 0;
