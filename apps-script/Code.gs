@@ -251,17 +251,13 @@ function handleArrive(ss, sheet, data) {
     data.note || '',            // K
   ];
 
+  // 19/08/2026 — LUÔN GHI XUỐNG CUỐI BẢNG.
+  // Trước đây code tìm "dòng trống đầu tiên trong 50 dòng cuối" để lấp vào; hậu quả là
+  // sau khi dọn dòng trùng (để lại dòng trống ở giữa) thì bản ghi mới rơi vào giữa bảng
+  // ⇒ danh sách KHÔNG còn theo thứ tự thời gian, rất khó đối chiếu bằng mắt.
+  // Báo cáo vẫn đúng vì pipeline sắp theo THỜI GIAN ĐẾN, nhưng nhìn sheet thì rối.
   const lastRow = sheet.getLastRow();
-  const scanStart = Math.max(4, lastRow - 50);
-  const scanCount = lastRow - scanStart + 2;
-  const checkRange = sheet.getRange(scanStart, 1, scanCount, 12).getValues();
   let insertRow = lastRow + 1;
-  for (let i = 0; i < checkRange.length; i++) {
-    if (!checkRange[i][0] && !checkRange[i][11]) {
-      insertRow = scanStart + i;
-      break;
-    }
-  }
   sheet.getRange(insertRow, 1, 1, row.length).setValues([row]);
 
   const tripCode = generateTripCode(sheet);
