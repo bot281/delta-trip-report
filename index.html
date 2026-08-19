@@ -559,14 +559,14 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJtOlGwq_WTxYRSnYlQT05MWTj_cK28Z3efEuJr0SeIqKc8w/exec';
 
 // ===== 19/08/2026: DỌN SERVICE WORKER + CACHE CŨ =====
 // Vì sao: sw.js đã bỏ (host trả 404) nhưng service worker đăng ký từ bản cũ VẪN còn
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-3';
+const APP_VERSION = '2026.08.19-4';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
