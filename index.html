@@ -610,7 +610,8 @@ function newClientId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-// Khoá nút kèm đếm ngược — tránh TX bấm dồn khi không thấy phản hồi
+// Khoá nút kèm đếm ngược — tránh TX bấm dồn khi không thấy phản hồi.
+// 19/08 chiều: TX phản hồi chờ 30s quá lâu (chị Hiền msg 5031) → rút còn 10s.
 function holdButton(btn, label, seconds) {
   if (!btn) return;
   let left = seconds;
@@ -1116,7 +1117,7 @@ async function submitArrive() {
     } else {
       showToast('❌ Lỗi kết nối: ' + err.message);
     }
-    holdButton(btn, '📍 Ghi nhận ĐẾN NƠI', 30);
+    holdButton(btn, '📍 Ghi nhận ĐẾN NƠI', 10);
     return;
   }
   btn.disabled = false; btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
@@ -1390,7 +1391,7 @@ async function submitDepart() {
     } else {
       showToast('❌ Lỗi kết nối: ' + err.message);
     }
-    holdButton(btn, '🚀 Ghi nhận RỜI ĐI', 30);
+    holdButton(btn, '🚀 Ghi nhận RỜI ĐI', 10);
     return;
   }
   btn.disabled = false; btn.innerHTML = '🚀 Ghi nhận RỜI ĐI';
