@@ -566,7 +566,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-2';
+const APP_VERSION = '2026.08.19-3';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -1112,7 +1112,25 @@ async function submitArrive() {
   } catch (err) {
     logEvent('arrive_mat_ket_noi', { driver, vehicle, detail: err.message + (err.raw ? ' | ' + err.raw : '') });
     if (err.message === 'KHONG_DOC_DUOC_PHAN_HOI') {
-      // Dữ liệu rất có thể ĐÃ vào sheet — nói rõ để TX không bấm lại tạo bản trùng
+      // Dữ liệu rất có thể ĐÃ vào sheet → tự dò lại server để LẤY MÃ CHUYẾN cho TX,
+      // thay vì bắt TX tự đi kiểm tra (TX không biết đã ghi nhận thành công hay chưa).
+      btn.innerHTML = '<span class="spinner"></span> Đang kiểm tra lại...';
+      const found = await recoverArrive(payload);
+      if (found) {
+        logEvent('arrive_ok_khoi_phuc', { driver, vehicle, rowId: found.rowId, tripCode: found.tripCode || '' });
+        const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+        const trip = { rowId: found.rowId, tripCode: found.tripCode || '', time: payload.datetime, vehicle, trailer, driver, location, lot, km, battery, task };
+        localPending.push(trip);
+        localStorage.setItem('deltaPending', JSON.stringify(localPending));
+        lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
+        arriveClientId = '';
+        document.getElementById('successTripCode').textContent = found.tripCode || '----';
+        switchTab('arrive-success');
+        resetArriveForm();
+        showToast('✅ Mạng chậm nhưng ĐÃ ghi nhận thành công. Mã chuyến: ' + (found.tripCode || '----'));
+        btn.disabled = false; btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
+        return;
+      }
       showToast('⚠️ Đã gửi nhưng chưa nhận được phản hồi. Mở "Chuyến của tôi" kiểm tra TRƯỚC khi bấm lại (bấm lại có thể tạo bản ghi trùng).');
     } else {
       showToast('❌ Lỗi kết nối: ' + err.message);
@@ -1143,15 +1161,96 @@ function copyTripCode() {
   }).catch(() => showToast('📋 Mã: ' + code));
 }
 
+// Mat phan hoi khi ghi "den noi" -> do lai server xem dong da vao sheet chua.
+// Tra ve {rowId, tripCode} neu tim thay, nguoc lai null.
+async function recoverArrive(payload) {
+  for (let i = 0; i < 2; i++) {
+    try {
+      const list = await fetchServerPending(payload.driver);
+      const hit = list.find(t =>
+        String(t.location || '').trim() === String(payload.location || '').trim() &&
+        String(t.lot || '').trim() === String(payload.lot || '').trim() &&
+        String(t.km || '').trim() === String(payload.km || '').trim());
+      if (hit) return hit;
+    } catch (e) { /* thu lai */ }
+  }
+  return null;
+}
+
+// Lay danh sach chuyen CHUA roi di cua tai xe tu server (cot L trong)
+async function fetchServerPending(driver) {
+  if (!driver) return [];
+  const res = await postToAPI({ action: 'getPending', driver: driver });
+  if (!res || !Array.isArray(res.pending)) return [];
+  return res.pending.map(t => ({
+    rowId: t.rowId,
+    tripCode: t.tripCode || '',
+    time: fmtServerTime(t.time),
+    vehicle: t.vehicle, trailer: t.trailer, driver: t.driver,
+    location: t.location, lot: t.lot, km: t.km, battery: t.battery, task: t.task,
+  }));
+}
+
+function fmtServerTime(v) {
+  if (!v) return '';
+  const str = String(v);
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return str;
+  const p2 = n => String(n).padStart(2, '0');
+  return p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear() +
+         ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+}
+
+// Bo sung vao danh sach cuc bo cac chuyen server dang mo ma may nay chua co
+// (mat phan hoi luc "den noi", doi may, xoa cache...). Tra ve so chuyen them moi.
+async function syncPendingFromServer() {
+  const profile = JSON.parse(localStorage.getItem('deltaProfile') || '{}');
+  const driverEl = document.getElementById('driver');
+  const driver = (driverEl && driverEl.value) || profile.driver || '';
+  if (!driver) return 0;
+  let serverList = [];
+  try { serverList = await fetchServerPending(driver); } catch (e) { return 0; }
+  const local = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+  const codes = new Set(local.map(t => t.tripCode).filter(Boolean));
+  const rowIds = new Set(local.map(t => String(t.rowId)));
+  let added = 0;
+  serverList.forEach(t => {
+    if (t.tripCode && codes.has(t.tripCode)) return;
+    if (rowIds.has(String(t.rowId))) return;
+    local.push(t);
+    if (t.tripCode) codes.add(t.tripCode);
+    rowIds.add(String(t.rowId));
+    added++;
+  });
+  if (added) localStorage.setItem('deltaPending', JSON.stringify(local));
+  return added;
+}
+
 async function loadPending() {
   let localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
 
   // Hiển thị ngay danh sách cục bộ (kể cả khi offline)
   renderPendingList(localPending);
-  if (localPending.length === 0) return;
 
   const refreshBtn = document.getElementById('btnRefreshPending');
   if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.innerHTML = '<span class="spinner"></span> Đang làm mới...'; }
+
+  // Kéo thêm các chuyến ĐANG MỞ trên server của chính tài xế này (mất phản hồi lúc
+  // "đến nơi" / đổi máy / xoá cache → máy này không có trong danh sách cục bộ).
+  try {
+    const added = await syncPendingFromServer();
+    if (added) {
+      localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+      renderPendingList(localPending);
+      showToast('🔄 Đã tải thêm ' + added + ' chuyến đang chờ rời đi từ hệ thống');
+    }
+  } catch (e) { /* offline → dùng danh sách cục bộ */ }
+
+  if (localPending.length === 0) {
+    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.innerHTML = '🔄 Làm mới danh sách'; }
+    return;
+  }
 
   // Đối chiếu server: ẩn các chuyến đã RỜI ĐI rồi — kể cả khi tài xế ca sau rời đi
   // bằng mã chuyến trên máy khác — để TX ca trước không phải rời đi lại / ghi đè dữ liệu.
