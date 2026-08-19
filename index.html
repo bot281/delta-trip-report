@@ -567,7 +567,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJ
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-7';
+const APP_VERSION = '2026.08.19-8';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -617,6 +617,116 @@ function setDepartCid(v) {
   departClientId = v;
   if (v) localStorage.setItem('deltaDepartCid', v); else localStorage.removeItem('deltaDepartCid');
 }
+
+// ============ 19/08 v8 — HÀNG CHỜ GỬI (OUTBOX) ============
+// Vì sao: ghi vào Google Sheets mất ~4-5 giây khi mạng tốt, và lâu hơn nhiều khi TX ở
+// bãi/cảng mạng yếu. Bắt TX đứng chờ vòng quay là trải nghiệm tệ và làm TX bấm lại
+// (sinh bản trùng). Nay: ghi nhận NGAY trên máy + gửi ở nền, tự thử lại.
+const OUTBOX_KEY = 'deltaOutbox';
+const TRIP_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // bỏ I,O,0,1 cho dễ đọc
+let outboxFlushing = false;
+
+function newTripCode() {
+  let c = '';
+  for (let i = 0; i < 4; i++) c += TRIP_CODE_CHARS.charAt(Math.floor(Math.random() * TRIP_CODE_CHARS.length));
+  return c;
+}
+
+function getOutbox() {
+  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch (e) { return []; }
+}
+function setOutbox(arr) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(arr)); }
+
+function enqueueOutbox(item) {
+  const box = getOutbox();
+  box.push({ ...item, tries: 0, at: Date.now() });
+  setOutbox(box);
+  updateSyncBadge();
+}
+
+function markTripSynced(cid, serverData) {
+  const list = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+  let changed = false;
+  list.forEach(t => {
+    if (t.cid && t.cid === cid) {
+      t.synced = true;
+      if (serverData && serverData.rowId) t.rowId = serverData.rowId;
+      if (serverData && serverData.tripCode) t.tripCode = serverData.tripCode;
+      changed = true;
+    }
+  });
+  if (changed) localStorage.setItem('deltaPending', JSON.stringify(list));
+}
+
+// Gửi lần lượt từng bản ghi trong hàng chờ. Thành công → bỏ khỏi hàng chờ.
+// Lỗi mạng → GIỮ LẠI để lần sau gửi tiếp (không bao giờ mất dữ liệu của TX).
+async function flushOutbox() {
+  if (outboxFlushing) return;
+  if (navigator.onLine === false) { updateSyncBadge(); return; }
+  outboxFlushing = true;
+  try {
+    let box = getOutbox();
+    while (box.length > 0) {
+      const item = box[0];
+      let ok = false;
+      try {
+        const res = await postToAPI(item.payload);
+        if (res && res.success) {
+          ok = true;
+          if (item.kind === 'arrive') markTripSynced(item.cid, res);
+          logEvent(item.kind === 'arrive' ? 'arrive_ok_nen' : 'roi_di_ok_nen',
+                   { driver: item.payload.driver || '', vehicle: item.payload.vehicle || '',
+                     rowId: res.rowId || '', tripCode: res.tripCode || item.tripCode || '' });
+        } else if (res && res.error) {
+          const err = String(res.error);
+          // Lỗi TẠM THỜI (hệ thống đang ghi bản ghi khác / hết giờ chờ khoá) → giữ lại,
+          // lát nữa gửi tiếp. Chỉ bỏ khỏi hàng chờ khi lỗi là VĨNH VIỄN (thiếu dữ liệu,
+          // vùng bị khoá quyền...) vì có gửi lại cũng không xong.
+          if (/dang ghi ban ghi khac|timeout|Lock/i.test(err)) break;
+          ok = true;
+          showToast('❌ Hệ thống từ chối 1 bản ghi: ' + err);
+          logEvent(item.kind + '_bi_tu_choi', { detail: err });
+        }
+      } catch (e) {
+        break;                       // mất mạng / chậm → thử lại lần sau
+      }
+      box = getOutbox();
+      if (ok) { box.shift(); setOutbox(box); }
+      else {
+        box[0].tries = (box[0].tries || 0) + 1;
+        setOutbox(box);
+        break;
+      }
+    }
+  } finally {
+    outboxFlushing = false;
+    updateSyncBadge();
+    if (typeof renderPendingList === 'function' && !document.getElementById('tab-pending').classList.contains('hidden')) {
+      renderPendingList(JSON.parse(localStorage.getItem('deltaPending') || '[]'));
+    }
+  }
+}
+
+// Dải cảnh báo khi còn bản ghi chưa đồng bộ — TX phải giữ app, không xoá dữ liệu trang
+function updateSyncBadge() {
+  const n = getOutbox().length;
+  let el = document.getElementById('syncBadge');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'syncBadge';
+    el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:8px 12px;' +
+      'font-size:13px;text-align:center;background:#fff3cd;color:#7a5b00;border-top:1px solid #f0d67a';
+    document.body.appendChild(el);
+  }
+  if (n === 0) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = '⏳ Còn ' + n + ' bản ghi đang chờ gửi lên hệ thống — giữ app mở khi có mạng, đừng xoá dữ liệu trang';
+}
+
+window.addEventListener('online', () => flushOutbox());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) flushOutbox(); });
+setInterval(() => flushOutbox(), 20000);
+setTimeout(() => { updateSyncBadge(); flushOutbox(); }, 1500);
 
 function newClientId() {
   try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
@@ -1100,58 +1210,35 @@ async function submitArrive() {
   let expenses = [];
   try { expenses = collectExpenses('arrive'); } catch (err) { showToast('❌ ' + err.message); return; }
   const btn = document.getElementById('btnArrive');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
-  try {
-    if (!arriveClientId) setArriveCid(newClientId());   // giữ nguyên nếu TX gửi lại cùng chuyến (kể cả sau khi tải lại trang)
-    const payload = { action: 'arrive', clientId: arriveClientId, datetime, vehicle, trailer, driver, location, lot, km, battery, task, note: document.getElementById('note').value, expenses };
-    logEvent('arrive_gui', { driver, vehicle, detail: `${location} | lô ${lot} | km ${km} | pin ${battery}` });
-    const data = await postToAPI(payload);
-    if (data.success) {
-      logEvent('arrive_ok', { driver, vehicle, rowId: data.rowId, tripCode: data.tripCode || '' });
-      const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
-      const trip = { rowId: data.rowId, tripCode: data.tripCode || '', time: payload.datetime, vehicle, trailer, driver, location, lot, km, battery, task };
-      localPending.push(trip);
-      localStorage.setItem('deltaPending', JSON.stringify(localPending));
-      lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
-      setArriveCid('');                                     // đã ghi xong → lần sau là chuyến mới
-      document.getElementById('successTripCode').textContent = data.tripCode || '----';
-      switchTab('arrive-success');
-      resetArriveForm();
-      if (data.savedExpenses) showToast(`✅ Đã ghi nhận đến nơi + ${data.savedExpenses} khoản chi phí`);
-    } else {
-      logEvent('arrive_loi', { driver, vehicle, detail: 'server trả lỗi: ' + (data.error || 'Không rõ') });
-      showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
-    }
-  } catch (err) {
-    logEvent('arrive_mat_ket_noi', { driver, vehicle, detail: err.message + (err.raw ? ' | ' + err.raw : '') });
-    if (err.message === 'KHONG_DOC_DUOC_PHAN_HOI') {
-      // Dữ liệu rất có thể ĐÃ vào sheet → tự dò lại server để LẤY MÃ CHUYẾN cho TX,
-      // thay vì bắt TX tự đi kiểm tra (TX không biết đã ghi nhận thành công hay chưa).
-      btn.innerHTML = '<span class="spinner"></span> Đang kiểm tra lại...';
-      const found = await recoverArrive(payload);
-      if (found) {
-        logEvent('arrive_ok_khoi_phuc', { driver, vehicle, rowId: found.rowId, tripCode: found.tripCode || '' });
-        const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
-        const trip = { rowId: found.rowId, tripCode: found.tripCode || '', time: payload.datetime, vehicle, trailer, driver, location, lot, km, battery, task };
-        localPending.push(trip);
-        localStorage.setItem('deltaPending', JSON.stringify(localPending));
-        lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
-        setArriveCid('');
-        document.getElementById('successTripCode').textContent = found.tripCode || '----';
-        switchTab('arrive-success');
-        resetArriveForm();
-        showToast('✅ Mạng chậm nhưng ĐÃ ghi nhận thành công. Mã chuyến: ' + (found.tripCode || '----'));
-        btn.disabled = false; btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
-        return;
-      }
-      showToast('⚠️ Đã gửi nhưng chưa nhận được phản hồi. Mở "Chuyến của tôi" kiểm tra TRƯỚC khi bấm lại (bấm lại có thể tạo bản ghi trùng).');
-    } else {
-      showToast('❌ Lỗi kết nối: ' + err.message);
-    }
-    holdButton(btn, '📍 Ghi nhận ĐẾN NƠI', 10);
-    return;
-  }
+
+  // ===== 19/08 v8 — GHI NHẬN NGAY, GỬI Ở NỀN =====
+  // TX không phải chờ vòng quay: mã chuyến do máy TX tự sinh nên hiện NGAY (0 giây),
+  // bản ghi vào hàng chờ trong máy rồi tự gửi + tự thử lại đến khi hệ thống nhận.
+  // Mã chống trùng (clientId) đi kèm nên gửi lại bao nhiêu lần cũng chỉ ra 1 dòng.
+  if (!arriveClientId) setArriveCid(newClientId());
+  const cid = arriveClientId;
+  const localCode = newTripCode();
+  const payload = { action: 'arrive', clientId: cid, tripCode: localCode, datetime, vehicle, trailer,
+                    driver, location, lot, km, battery, task,
+                    note: document.getElementById('note').value, expenses };
+  logEvent('arrive_gui', { driver, vehicle, detail: `${location} | lô ${lot} | km ${km} | pin ${battery} | ma ${localCode}` });
+
+  const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+  const trip = { rowId: 0, tripCode: localCode, time: datetime, vehicle, trailer, driver,
+                 location, lot, km, battery, task, cid: cid, synced: false };
+  localPending.push(trip);
+  localStorage.setItem('deltaPending', JSON.stringify(localPending));
+  lastArriveSuccessTrip = { ...trip, status: 'pending', expenses: { arrival: expenses, departure: [] } };
+
+  enqueueOutbox({ kind: 'arrive', cid: cid, tripCode: localCode, payload: payload });
+  setArriveCid('');                       // chuyến này đã có mã riêng → lần sau là chuyến mới
+
+  document.getElementById('successTripCode').textContent = localCode;
+  switchTab('arrive-success');
+  resetArriveForm();
+  showToast('✅ Đã ghi nhận ĐẾN NƠI. Mã chuyến: ' + localCode);
   btn.disabled = false; btn.innerHTML = '📍 Ghi nhận ĐẾN NƠI';
+  flushOutbox();                          // gửi ở nền, không chờ
 }
 
 function resetArriveForm() {
@@ -1271,6 +1358,7 @@ async function loadPending() {
   // đúng dòng; pending / không thấy / lỗi mạng → GIỮ (an toàn offline, không xoá nhầm).
   try {
     const checks = await Promise.all(localPending.map(trip => {
+      if (trip.synced === false) return Promise.resolve({ trip, keep: true });   // chưa lên hệ thống → giữ
       if (!trip.tripCode) return Promise.resolve({ trip, keep: true });
       return postToAPI({ action: 'findByCode', code: trip.tripCode }, 2)
         .then(r => {
@@ -1309,6 +1397,7 @@ function renderPendingList(localPending) {
       </div>
       <div class="trip-details">${escapeHtml(trip.vehicle)} • ${escapeHtml(trip.trailer || 'Không mooc')} • ${escapeHtml(trip.lot)} • ${escapeHtml(trip.task)}</div>
       ${trip.tripCode ? `<div class="trip-code">MÃ: ${escapeHtml(trip.tripCode)}</div>` : ''}
+      ${trip.synced === false ? '<div style="font-size:12px;color:#7a5b00">⏳ đang đồng bộ lên hệ thống…</div>' : ''}
     </div>`).join('');
 }
 
@@ -1462,51 +1551,36 @@ async function submitDepart() {
   let expenses = [];
   try { expenses = collectExpenses('depart'); } catch (err) { showToast('❌ ' + err.message); return; }
   const btn = document.getElementById('btnDepart');
-  const departTripCode = (currentDepartTrip && currentDepartTrip.tripCode) || '';  // khai ngoài try để catch dùng được
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
-  try {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mi = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    const departDatetime = `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
-    if (!departClientId) setDepartCid(newClientId());
-    const payload = { action: 'depart', clientId: departClientId, rowId: currentDepartRowId, tripCode: departTripCode, datetime: departDatetime, driver: departDriver, vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery, lot: departLot, task: departTask, note: document.getElementById('departNote').value, expenses };
-    logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
-                             tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
-    const data = await postToAPI(payload);
-    if (data.success) {
-      logEvent('roi_di_ok', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId, tripCode: departTripCode });
-      if (currentDepartSource === 'local') {
-        const idx = parseInt(document.getElementById('tab-depart').dataset.pendingIdx);
-        const localPending = JSON.parse(localStorage.getItem('deltaPending') || '[]');
-        localPending.splice(idx, 1);
-        localStorage.setItem('deltaPending', JSON.stringify(localPending));
-      }
-      setDepartCid('');
-      showToast(data.savedExpenses ? `✅ Đã ghi nhận rời đi + ${data.savedExpenses} khoản chi phí` : '✅ Đã ghi nhận rời đi!');
-      switchTab('pending');
-      clearExpenseRows('depart');
-    } else {
-      logEvent('roi_di_loi', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
-                               tripCode: departTripCode, detail: 'server trả lỗi: ' + (data.error || 'Không rõ') });
-      showToast('❌ Lỗi: ' + (data.error || 'Không rõ'));
-    }
-  } catch (err) {
-    logEvent('roi_di_mat_ket_noi', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
-                                     tripCode: departTripCode, detail: err.message });
-    if (err.message === 'KHONG_DOC_DUOC_PHAN_HOI') {
-      showToast('⚠️ Đã gửi nhưng chưa nhận được phản hồi. Kiểm tra lại chuyến TRƯỚC khi bấm lại (bấm lại có thể tạo bản ghi trùng).');
-    } else {
-      showToast('❌ Lỗi kết nối: ' + err.message);
-    }
-    holdButton(btn, '🚀 Ghi nhận RỜI ĐI', 10);
-    return;
+  const departTripCode = (currentDepartTrip && currentDepartTrip.tripCode) || '';
+
+  // 19/08 v8 — ghi nhận ngay, gửi ở nền (giống "đến nơi")
+  const now = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  const departDatetime = p2(now.getDate()) + '/' + p2(now.getMonth() + 1) + '/' + now.getFullYear() +
+                         ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+  if (!departClientId) setDepartCid(newClientId());
+  const payload = { action: 'depart', clientId: departClientId, rowId: currentDepartRowId,
+                    tripCode: departTripCode, datetime: departDatetime, driver: departDriver,
+                    vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery,
+                    lot: departLot, task: departTask,
+                    note: document.getElementById('departNote').value, expenses };
+  logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                           tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
+
+  enqueueOutbox({ kind: 'depart', cid: departClientId, tripCode: departTripCode, payload: payload });
+  setDepartCid('');
+
+  // Bỏ chuyến khỏi danh sách chờ ngay (đã nằm trong hàng chờ gửi nên không mất)
+  if (currentDepartSource === 'local') {
+    const idx = parseInt(document.getElementById('tab-depart').dataset.pendingIdx);
+    const lp = JSON.parse(localStorage.getItem('deltaPending') || '[]');
+    if (!isNaN(idx)) { lp.splice(idx, 1); localStorage.setItem('deltaPending', JSON.stringify(lp)); }
   }
+  showToast('✅ Đã ghi nhận RỜI ĐI' + (departTripCode ? ' (mã ' + departTripCode + ')' : ''));
+  switchTab('pending');
+  clearExpenseRows('depart');
   btn.disabled = false; btn.innerHTML = '🚀 Ghi nhận RỜI ĐI';
+  flushOutbox();
 }
 
 function openExpenseEditorFromSuccess() {

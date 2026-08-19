@@ -151,33 +151,67 @@ function onEdit(e) {
 }
 
 // ===== TRIP CODE (optimized: only scan recent rows) =====
-function generateTripCode(sheet) {
-  const lastRow = sheet.getLastRow();
-  const existingCodes = new Set();
+// 19/08 v5 — SINH MÃ CHUYẾN NHANH.
+// Trước: mỗi lần ghi phải đọc 2 vùng × 300 dòng (cột U và cột L) ⇒ 2 lượt gọi Sheets,
+// tốn 1–2 giây. Nay: đọc MỘT vùng L..U của 150 dòng cuối, và nhớ tập mã đang mở trong
+// CacheService 5 phút nên các lần bấm kế tiếp không phải đọc sheet nữa.
+// Đồng thời CHẤP NHẬN mã do app đề xuất (data.tripCode) — để app hiện mã cho TX ngay
+// lập tức mà mã đó vẫn đúng bằng mã lưu trong sheet.
+var OPEN_CODES_CACHE_KEY = 'open_trip_codes';
+var OPEN_CODES_TTL = 300;
 
+function getOpenCodeSet(sheet) {
+  try {
+    var hit = CacheService.getScriptCache().get(OPEN_CODES_CACHE_KEY);
+    if (hit) return new Set(JSON.parse(hit));
+  } catch (e) {}
+  var codes = [];
+  var lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
-    const scanRows = Math.min(lastRow - 1, 300);
-    const startRow = lastRow - scanRows + 1;
-    const codes = sheet.getRange(startRow, 21, scanRows, 1).getValues();
-    const departures = sheet.getRange(startRow, 12, scanRows, 1).getValues();
-    for (let i = 0; i < codes.length; i++) {
-      if (!departures[i][0] && codes[i][0]) {
-        existingCodes.add(String(codes[i][0]).toUpperCase());
-      }
+    var scanRows = Math.min(lastRow - 1, 150);
+    var startRow = lastRow - scanRows + 1;
+    // MỘT lượt đọc L..U (cột 12..21): [0] = dấu thời gian rời, [9] = mã chuyến
+    var block = sheet.getRange(startRow, 12, scanRows, 10).getValues();
+    for (var i = 0; i < block.length; i++) {
+      if (!block[i][0] && block[i][9]) codes.push(String(block[i][9]).toUpperCase());
     }
   }
+  try { CacheService.getScriptCache().put(OPEN_CODES_CACHE_KEY, JSON.stringify(codes), OPEN_CODES_TTL); } catch (e) {}
+  return new Set(codes);
+}
 
-  for (let attempt = 0; attempt < 10; attempt++) {
-    let code = '';
-    for (let i = 0; i < 4; i++) {
+function rememberOpenCode(code) {
+  try {
+    var c = CacheService.getScriptCache();
+    var hit = c.get(OPEN_CODES_CACHE_KEY);
+    var arr = hit ? JSON.parse(hit) : [];
+    arr.push(String(code).toUpperCase());
+    c.put(OPEN_CODES_CACHE_KEY, JSON.stringify(arr), OPEN_CODES_TTL);
+  } catch (e) {}
+}
+
+function generateTripCode(sheet, preferred) {
+  var taken = getOpenCodeSet(sheet);
+
+  // Mã app đề xuất: chỉ nhận nếu đúng 4 ký tự hợp lệ và chưa bị dùng bởi chuyến đang mở
+  if (preferred) {
+    var pref = String(preferred).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (pref.length === 4 && !taken.has(pref)) { rememberOpenCode(pref); return pref; }
+  }
+
+  for (var attempt = 0; attempt < 12; attempt++) {
+    var code = '';
+    for (var i = 0; i < 4; i++) {
       code += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
     }
-    if (!existingCodes.has(code)) return code;
+    if (!taken.has(code)) { rememberOpenCode(code); return code; }
   }
-
-  return CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length)) +
-         String(Date.now()).slice(-3);
+  var fallback = CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length)) +
+                 String(Date.now()).slice(-3);
+  rememberOpenCode(fallback);
+  return fallback;
 }
+
 
 // ===== ARRIVE =====
 // ===== 19/08/2026: CHẶN GHI TRÙNG THEO clientId =====
@@ -207,7 +241,7 @@ function cidPut(clientId, obj) {
 function findRowByClientId(sheet, clientId) {
   if (!clientId) return 0;
   var lastRow = sheet.getLastRow();
-  var start = Math.max(4, lastRow - 200);
+  var start = Math.max(4, lastRow - 120);
   var n = lastRow - start + 1;
   if (n <= 0) return 0;
   var vals = sheet.getRange(start, CLIENT_ID_COL, n, 1).getValues();
@@ -230,11 +264,26 @@ function handleArrive(ss, sheet, data) {
   } catch (e) {
     return jsonResponse({ success: false, error: 'He thong dang ghi ban ghi khac, vui long bam lai sau vai giay' });
   }
+  var res;
   try {
-    return handleArriveLocked(ss, sheet, data);
+    res = handleArriveLocked(ss, sheet, data);
   } finally {
-    try { lock.releaseLock(); } catch (e) {}
+    try { lock.releaseLock(); } catch (e) {}   // v5: nhả lock NGAY sau khi chèn dòng
   }
+  // Lưu chi phí NGOÀI lock: phần này chậm (ghi sheet khác) nhưng không cần độc quyền,
+  // nhờ vậy 2 tài xế bấm gần nhau gần như không phải chờ nhau.
+  if (res && res.__deferExpenses) {
+    var savedExpenses = 0;
+    try {
+      savedExpenses = saveExpenseRows(ss, sheet, {
+        rowId: res.rowId, tripCode: res.tripCode, phase: 'arrival',
+        expenses: res.expenses, createdBy: res.driver || '',
+      });
+    } catch (e) {}
+    return jsonResponse({ success: true, rowId: res.rowId, tripCode: res.tripCode,
+                          savedExpenses: savedExpenses, message: 'Da ghi nhan den noi' });
+  }
+  return res;
 }
 
 function handleArriveLocked(ss, sheet, data) {
@@ -278,7 +327,7 @@ function handleArriveLocked(ss, sheet, data) {
   // Báo cáo vẫn đúng vì pipeline sắp theo THỜI GIAN ĐẾN, nhưng nhìn sheet thì rối.
   const lastRow = sheet.getLastRow();
   let insertRow = lastRow + 1;
-  const tripCode = generateTripCode(sheet);
+  const tripCode = generateTripCode(sheet, data.tripCode);
 
   // 19/08 (v4): ghi A..X trong MỘT lần setValues. Trước đây ghi A..K rồi mới ghi U, rồi X
   // ⇒ có khoảng thời gian dòng đã tồn tại nhưng CHƯA có mã chuyến / chưa có clientId;
@@ -291,23 +340,17 @@ function handleArriveLocked(ss, sheet, data) {
   SpreadsheetApp.flush();                            // đẩy xuống sheet trước khi nhả lock
   if (clientId) cidPut(clientId, { rowId: insertRow, tripCode: tripCode });
 
-  // Save expenses if provided
-  let savedExpenses = 0;
+  // Chi phí (nếu có) được lưu SAU khi nhả lock — xem handleArrive()
   if (data.expenses && data.expenses.length > 0) {
-    savedExpenses = saveExpenseRows(ss, sheet, {
-      rowId: insertRow,
-      tripCode: tripCode,
-      phase: 'arrival',
-      expenses: data.expenses,
-      createdBy: data.driver || '',
-    });
+    return { __deferExpenses: true, rowId: insertRow, tripCode: tripCode,
+             expenses: data.expenses, driver: data.driver || '' };
   }
 
   return jsonResponse({
     success: true,
     rowId: insertRow,
     tripCode: tripCode,
-    savedExpenses: savedExpenses,
+    savedExpenses: 0,
     message: 'Da ghi nhan den noi'
   });
 }
@@ -364,8 +407,12 @@ function handleDepartLocked(ss, sheet, data) {
                           message: 'Chuyen nay da ghi roi di truoc do' });
   }
 
-  const now = new Date();
-  const timestamp = Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
+  // 19/08 v5: ưu tiên GIỜ DO APP GỬI. Bản ghi có thể được đồng bộ muộn (gửi ở nền,
+  // mất mạng rồi gửi lại) nên lấy giờ máy chủ sẽ ghi sai thời điểm rời đi thực tế.
+  var timestamp = data.datetime || data.time || '';
+  if (!timestamp) {
+    timestamp = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy HH:mm:ss');
+  }
 
   const depRow = [
     timestamp,                   // L
