@@ -293,8 +293,28 @@ function handleArrive(ss, sheet, data) {
 }
 
 // ===== DEPART =====
+// 19/08/2026 — TÌM DÒNG THEO MÃ CHUYẾN (cột U/21).
+// Vì sao: app gửi rowId = SỐ DÒNG. Nếu ai xoá/chèn dòng trong sheet thì số dòng dịch,
+// nửa "rời đi" sẽ ghi vào SAI chuyến (đã xảy ra 19/08: 3 bản ghi rời đi lệch dòng).
+// Mã chuyến không đổi nên tra theo mã là an toàn tuyệt đối.
+function findRowByTripCode(sheet, tripCode) {
+  if (!tripCode) return 0;
+  var lastRow = sheet.getLastRow();
+  var start = Math.max(4, lastRow - 400);
+  var n = lastRow - start + 1;
+  if (n <= 0) return 0;
+  var vals = sheet.getRange(start, 21, n, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (vals[i][0] && String(vals[i][0]).trim() === String(tripCode).trim()) return start + i;
+  }
+  return 0;
+}
+
 function handleDepart(ss, sheet, data) {
-  const rowId = data.rowId;
+  var rowId = data.rowId;
+  // Ưu tiên mã chuyến; chỉ dùng rowId khi không tra được mã
+  var byCode = findRowByTripCode(sheet, data.tripCode);
+  if (byCode) rowId = byCode;
   if (!rowId) return jsonResponse({ error: 'Missing rowId' });
 
   // 19/08/2026 — chặn ghi trùng: cùng clientId, hoặc dòng đã có dấu thời gian rời đi

@@ -1361,7 +1361,7 @@ async function submitDepart() {
     const ss = String(now.getSeconds()).padStart(2, '0');
     const departDatetime = `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
     if (!departClientId) departClientId = newClientId();
-    const payload = { action: 'depart', clientId: departClientId, rowId: currentDepartRowId, datetime: departDatetime, driver: departDriver, vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery, lot: departLot, task: departTask, note: document.getElementById('departNote').value, expenses };
+    const payload = { action: 'depart', clientId: departClientId, rowId: currentDepartRowId, tripCode: departTripCode, datetime: departDatetime, driver: departDriver, vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery, lot: departLot, task: departTask, note: document.getElementById('departNote').value, expenses };
     logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
                              tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
     const data = await postToAPI(payload);
