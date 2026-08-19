@@ -561,10 +561,29 @@
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1Hx2XEjHB78SEGJPXWkLoPD3rSMu2PCoe5XbEJ4t_fTd_/exec';
 
-// Register Service Worker for offline support
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
+// ===== 19/08/2026: DỌN SERVICE WORKER + CACHE CŨ =====
+// Vì sao: sw.js đã bỏ (host trả 404) nhưng service worker đăng ký từ bản cũ VẪN còn
+// trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
+// gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
+// rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
+const APP_VERSION = '2026.08.19-2';
+(async function cleanupOldServiceWorker() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      let removed = 0;
+      for (const r of regs) { try { await r.unregister(); removed++; } catch (e) {} }
+      if (window.caches && caches.keys) {
+        const keys = await caches.keys();
+        for (const k of keys) { try { await caches.delete(k); } catch (e) {} }
+      }
+      if (removed > 0 && !sessionStorage.getItem('swCleaned')) {
+        sessionStorage.setItem('swCleaned', '1');
+        location.reload();
+      }
+    }
+  } catch (e) {}
+})();
 const EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác'];
 const VAT_OPTIONS = ['10%', '8%', '0%', 'Không hóa đơn'];
 let currentDepartRowId = null;
