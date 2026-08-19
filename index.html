@@ -567,7 +567,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJ
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-5';
+const APP_VERSION = '2026.08.19-6';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -635,7 +635,7 @@ async function postToAPI(payload, retries = 0) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);   // 19/08 v4: Sheets ghi cham 15-25s, cat o 20s la huy oan -> TX bam lai gay trung
       const res = await fetch(url, { signal: controller.signal, redirect: 'follow' });
       clearTimeout(timeoutId);
       const text = await res.text();

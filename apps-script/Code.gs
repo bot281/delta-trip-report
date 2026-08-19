@@ -217,7 +217,27 @@ function findRowByClientId(sheet, clientId) {
   return 0;
 }
 
+// 19/08/2026 (v4) — KHOÁ SCRIPT khi ghi "đến nơi".
+// Vì sao: v3 kiểm tra trùng TRƯỚC khi ghi dòng, nhưng KHÔNG có lock. Mỗi lần chạy mất
+// 15-25 giây (Sheets chậm) nên 3 lần bấm cách nhau 20-30s vẫn "cùng lúc": cả 3 đều
+// kiểm tra thấy chưa có dòng nào → cùng ghi ⇒ 3 dòng CÙNG clientId (19/08 lô MEV2395).
+// Nay serialize toàn bộ phần ghi bằng LockService: lần sau vào lock mới kiểm tra lại,
+// lúc này dòng của lần trước đã có nên nhận ra trùng và KHÔNG ghi thêm.
 function handleArrive(ss, sheet, data) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(50000);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'He thong dang ghi ban ghi khac, vui long bam lai sau vai giay' });
+  }
+  try {
+    return handleArriveLocked(ss, sheet, data);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function handleArriveLocked(ss, sheet, data) {
   const timeStr = data.datetime || data.time || '';
   const clientId = data.clientId || '';
 
@@ -258,14 +278,18 @@ function handleArrive(ss, sheet, data) {
   // Báo cáo vẫn đúng vì pipeline sắp theo THỜI GIAN ĐẾN, nhưng nhìn sheet thì rối.
   const lastRow = sheet.getLastRow();
   let insertRow = lastRow + 1;
-  sheet.getRange(insertRow, 1, 1, row.length).setValues([row]);
-
   const tripCode = generateTripCode(sheet);
-  sheet.getRange(insertRow, 21).setValue(tripCode);
-  if (clientId) {
-    sheet.getRange(insertRow, CLIENT_ID_COL).setValue(clientId);
-    cidPut(clientId, { rowId: insertRow, tripCode: tripCode });
-  }
+
+  // 19/08 (v4): ghi A..X trong MỘT lần setValues. Trước đây ghi A..K rồi mới ghi U, rồi X
+  // ⇒ có khoảng thời gian dòng đã tồn tại nhưng CHƯA có mã chuyến / chưa có clientId;
+  // getPending đọc đúng lúc đó sẽ trả về chuyến KHÔNG có mã (app hiện ô trống).
+  const fullRow = row.slice();                       // A..K (11 cột)
+  while (fullRow.length < CLIENT_ID_COL) fullRow.push('');   // đệm tới cột X (24)
+  fullRow[20] = tripCode;                            // U = mã chuyến
+  if (clientId) fullRow[CLIENT_ID_COL - 1] = clientId;       // X = mã chống trùng
+  sheet.getRange(insertRow, 1, 1, fullRow.length).setValues([fullRow]);
+  SpreadsheetApp.flush();                            // đẩy xuống sheet trước khi nhả lock
+  if (clientId) cidPut(clientId, { rowId: insertRow, tripCode: tripCode });
 
   // Save expenses if provided
   let savedExpenses = 0;
@@ -307,6 +331,20 @@ function findRowByTripCode(sheet, tripCode) {
 }
 
 function handleDepart(ss, sheet, data) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(50000);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'He thong dang ghi ban ghi khac, vui long bam lai sau vai giay' });
+  }
+  try {
+    return handleDepartLocked(ss, sheet, data);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function handleDepartLocked(ss, sheet, data) {
   var rowId = data.rowId;
   // Ưu tiên mã chuyến; chỉ dùng rowId khi không tra được mã
   var byCode = findRowByTripCode(sheet, data.tripCode);
