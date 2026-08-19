@@ -363,6 +363,7 @@
 <div class="header">
   <h1>🚛 Báo Cáo Hành Trình</h1>
   <div class="subtitle" id="driverInfo">Delta International</div>
+  <div class="subtitle" id="headerVersion" style="opacity:.85;font-size:12px"></div>
 </div>
 
 <div class="container">
@@ -566,7 +567,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJ
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.08.19-4';
+const APP_VERSION = '2026.08.19-5';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -1582,6 +1583,8 @@ function escapeHtml(value) {
     el.style.cssText = 'text-align:center;font-size:12px;color:#9aa0a6;padding:14px 0 22px';
     el.textContent = 'Phiên bản ' + APP_VERSION;
     document.body.appendChild(el);
+    const h = document.getElementById('headerVersion');
+    if (h) h.textContent = 'Phiên bản ' + APP_VERSION;
   } catch (e) {}
 })();
 </script>
