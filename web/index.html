@@ -279,6 +279,8 @@
       cursor: pointer;
       flex-shrink: 0;
     }
+    body.expense-off .expense-section,
+    body.expense-off .expense-entry-btn { display: none !important; }
     .expense-section {
       margin-top: 6px;
       border-top: 1px dashed var(--gray-200);
@@ -447,10 +449,10 @@
         <div class="label" style="margin-top:24px;">Mã chuyến</div>
         <div class="code" id="successTripCode">----</div>
         <button class="btn-copy" id="btnCopyCode" onclick="copyTripCode()">📋 Sao chép mã</button>
-        <div class="hint">Có thể dùng mã này để bổ sung chi phí hoặc tìm lại chuyến sau.</div>
+        <div class="hint">Có thể dùng mã này để tìm lại chuyến sau.</div>
       </div>
     </div>
-    <button class="btn btn-outline" onclick="openExpenseEditorFromSuccess()">💸 Bổ sung chi phí đến</button>
+    <button class="btn btn-outline expense-entry-btn" onclick="openExpenseEditorFromSuccess()">💸 Bổ sung chi phí đến</button>
     <button class="btn btn-primary" onclick="backToArrive()">📍 Tạo chuyến mới</button>
     <button class="btn btn-outline" onclick="switchTab('pending')">⏳ Xem chuyến chờ rời đi</button>
   </div>
@@ -564,6 +566,9 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzDyjhAhngx-D1N_P-WWMR1
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+// 03/09/2026 — chị Hiền: tài xế KHÔNG khai chi phí trên app nữa, phát sinh thì gửi Zalo.
+// Đổi lại thành true là toàn bộ phần nhập chi phí hiện lại như cũ (backend giữ nguyên).
+const EXPENSE_UI_ENABLED = false;
 let EXPENSE_TYPES = ['LOLO', 'Vé cổng', 'Sửa chữa', 'Khác']; // updated from config
 let TOLL_STATIONS = []; // loaded from config (col K)
 const VAT_OPTIONS = ['10%', '8%', '0%', 'Không hóa đơn'];
@@ -582,6 +587,7 @@ async function postToAPI(payload) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (!EXPENSE_UI_ENABLED) document.body.classList.add('expense-off');
   loadConfigInstant(); // Show cached data immediately
   loadProfile();
   setCurrentDateTime();
@@ -895,6 +901,7 @@ function getExpenseSummaryEl(target) {
 }
 
 function collectExpenses(target) {
+  if (!EXPENSE_UI_ENABLED) return [];
   const container = getExpenseContainer(target);
   if (!container) return [];
   const rows = Array.from(container.querySelectorAll('.expense-row'));
@@ -1082,8 +1089,8 @@ async function searchByCode() {
             ${arrivalExpenseHistory}
             ${departureExpenseHistory}
             <div class="trip-actions">
-              <button class="btn btn-outline btn-sm" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "arrival", "pending")'>💸 Bổ sung chi phí phần đến</button>
-              <button class="btn btn-outline btn-sm" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "departure", "pending")'>💸 Bổ sung chi phí phần đi</button>
+              <button class="btn btn-outline btn-sm expense-entry-btn" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "arrival", "pending")'>💸 Bổ sung chi phí phần đến</button>
+              <button class="btn btn-outline btn-sm expense-entry-btn" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "departure", "pending")'>💸 Bổ sung chi phí phần đi</button>
             </div>
           </div>`;
       } else {
@@ -1098,7 +1105,7 @@ async function searchByCode() {
             ${arrivalExpenseHistory}
             <div class="trip-actions">
               <button class="btn btn-success btn-sm" type="button" onclick='openDepartFromSearch(${JSON.stringify(trip).replace(/'/g, '&apos;')})'>🚀 Ghi nhận rời đi</button>
-              <button class="btn btn-outline btn-sm" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "arrival", "pending")'>💸 Bổ sung chi phí phần đến</button>
+              <button class="btn btn-outline btn-sm expense-entry-btn" type="button" onclick='openExpenseEditor(${JSON.stringify(trip).replace(/'/g, '&apos;')}, "arrival", "pending")'>💸 Bổ sung chi phí phần đến</button>
             </div>
           </div>`;
       }
