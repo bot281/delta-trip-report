@@ -569,7 +569,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxEhWgyfbMzxtHfEHz8fSwJ
 // trên máy tài xế và tiếp tục phục vụ index.html từ cache ⇒ TX chạy bản cũ (còn tự
 // gửi lại 3 lần → nhân bản bản ghi) dù bản mới đã lên. Nay tự gỡ SW + xoá cache,
 // rồi tải lại MỘT lần duy nhất (cờ trong sessionStorage để không lặp vô hạn).
-const APP_VERSION = '2026.09.03-1';
+const APP_VERSION = '2026.09.25-1';
 (async function cleanupOldServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
@@ -1552,8 +1552,21 @@ async function submitDepart() {
   const departBatteryError = validateBattery(departBattery); if (departBatteryError) { showToast('❌ ' + departBatteryError); return; }
   const arriveKm = currentDepartTrip ? parseWholeNumber(currentDepartTrip.km) : NaN;
   const departKmNum = parseWholeNumber(departKm);
+  // 25/09 — km đến nhập sai quá xa (vd 408671 thay vì 23429) thì KHÔNG chặn nữa (tránh treo chuyến):
+  // cho rời đi, gắn cờ vào ghi chú để vận hành kiểm tra sau. Lệch nhỏ vẫn chặn như cũ (thường là gõ nhầm km rời).
+  let kmFlagNote = '';
   if (Number.isFinite(arriveKm) && Number.isFinite(departKmNum) && departKmNum < arriveKm) {
-    showToast(`❌ Km rời đi (${departKmNum}) không được nhỏ hơn km đến nơi (${arriveKm})`); return;
+    if (arriveKm - departKmNum >= 500) {
+      kmFlagNote = `⚠️ KM ĐẾN NGHI NHẬP SAI (đến ${arriveKm}, rời ${departKmNum}) - VH kiểm tra`;
+      logEvent('km_den_nghi_sai', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                                    tripCode: (currentDepartTrip && currentDepartTrip.tripCode) || '',
+                                    detail: `km đến ${arriveKm} | km rời ${departKmNum}` });
+    } else {
+      logEvent('roi_di_bi_chan', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
+                                   tripCode: (currentDepartTrip && currentDepartTrip.tripCode) || '',
+                                   detail: `km rời ${departKmNum} < km đến ${arriveKm}` });
+      showToast(`❌ Km rời đi (${departKmNum}) không được nhỏ hơn km đến nơi (${arriveKm})`); return;
+    }
   }
   let expenses = [];
   try { expenses = collectExpenses('depart'); } catch (err) { showToast('❌ ' + err.message); return; }
@@ -1570,7 +1583,7 @@ async function submitDepart() {
                     tripCode: departTripCode, datetime: departDatetime, driver: departDriver,
                     vehicle: departVehicle, trailer: departTrailer, km: departKm, battery: departBattery,
                     lot: departLot, task: departTask,
-                    note: document.getElementById('departNote').value, expenses };
+                    note: [document.getElementById('departNote').value, kmFlagNote].filter(Boolean).join(' | '), expenses };
   logEvent('roi_di_gui', { driver: departDriver, vehicle: departVehicle, rowId: currentDepartRowId,
                            tripCode: departTripCode, detail: `nguồn ${currentDepartSource || '?'} | lô ${departLot} | km ${departKm} | pin ${departBattery}` });
 
